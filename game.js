@@ -1309,6 +1309,255 @@ function updateTank(dt) {
   G2.mesh.position.y = -48.75 + G2.open * 18;
   G2.wheel.rotation.z += (keys.action && Math.abs(P.x - 189.2) < 1.0 && G2.open < 1 ? dt * 3 : 0);
 }
+
+// ---------------------------------------------------------------- the huddle (v10): containment, the merge, the breakout, the shore
+var BLOB = { mode: 'none', t: 0, vx: 0, walls: 0, glassBroken: false, locked: false, restT: 0, smashT: 0 };
+var blobMesh, blobCore, blobArm, glassMesh, alarmLight;
+var BWALLS = [], shards = [], fleeSci = [];
+(function () {
+  // the containment chamber (x200-218), tall, lit like a lab
+  addPlatform(200, 224.3, -39.1, 3);
+  var cw = new THREE.Mesh(new THREE.BoxGeometry(19, 17, 1.2), MAT.wall);
+  cw.position.set(209, -31.4, -3.4); scene.add(cw);
+  var cc = new THREE.Mesh(new THREE.BoxGeometry(19, 1.2, 8), MAT.dark);
+  cc.position.set(209, -23.1, -0.5); scene.add(cc);
+  var cl1 = new THREE.PointLight(0x9fc0d8, 3.0, 14, 2);
+  cl1.position.set(204, -26, -1.2); scene.add(cl1);
+  var cl2 = new THREE.PointLight(0x9fc0d8, 2.4, 12, 2);
+  cl2.position.set(214, -26, -1.2); scene.add(cl2);
+  var cstrip = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.06),
+    new THREE.MeshBasicMaterial({ color: 0xaac6dd, transparent: true, opacity: 0.7 }));
+  cstrip.position.set(204, -24.4, -2.75); scene.add(cstrip);
+  var cstrip2 = cstrip.clone(); cstrip2.position.set(214, -24.4, -2.75); scene.add(cstrip2);
+  // alarm light, off until the glass breaks
+  alarmLight = new THREE.PointLight(0xff7a4a, 0, 16, 2);
+  alarmLight.position.set(209, -25, 0.5); scene.add(alarmLight);
+
+  // the glass sphere and what is inside it
+  glassMesh = new THREE.Mesh(new THREE.SphereGeometry(2.6, 24, 18),
+    new THREE.MeshStandardMaterial({ color: 0x8fb6c4, roughness: 0.08, metalness: 0.15, transparent: true, opacity: 0.22 }));
+  glassMesh.position.set(209, -36.3, -0.6); scene.add(glassMesh);
+  var gbase = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.3, 0.5, 20), MAT.wallHi);
+  gbase.position.set(209, -38.85, -0.6); scene.add(gbase);
+
+  blobMesh = new THREE.Group();
+  var blobM = new THREE.MeshStandardMaterial({ color: 0xa89a94, roughness: 0.95 });
+  var blobM2 = new THREE.MeshStandardMaterial({ color: 0xbfb0aa, roughness: 0.9 });
+  blobCore = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 14), blobM);
+  blobMesh.add(blobCore);
+  for (var li = 0; li < 9; li++) {
+    var lump = new THREE.Mesh(new THREE.CapsuleGeometry(0.28 + (li % 3) * 0.06, 0.6 + (li % 4) * 0.18, 4, 8), li % 2 ? blobM2 : blobM);
+    var la = li * 2.4, lr = 1.15;
+    lump.position.set(Math.cos(la) * lr * Math.cos(li), Math.sin(li * 1.7) * 0.9, Math.sin(la) * lr * 0.6);
+    lump.rotation.set(li * 0.9, la, li * 1.3);
+    blobMesh.add(lump);
+  }
+  // the boy's arm, still reaching out of the mass
+  blobArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.55, 4, 6),
+    new THREE.MeshStandardMaterial({ color: 0xc7a48a, roughness: 0.85 }));
+  blobArm.position.set(0.25, 1.35, 0.2); blobArm.rotation.z = -0.5;
+  blobMesh.add(blobArm);
+  blobMesh.position.set(209, -37.6, -0.4);
+  scene.add(blobMesh);
+
+  // two scientists tending the tank; they flee when it breaks
+  for (var si = 0; si < 2; si++) {
+    var sc = new THREE.Group();
+    var sb2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.8, 4, 8),
+      new THREE.MeshStandardMaterial({ color: 0x3a4148, roughness: 0.95 }));
+    sb2.position.y = 0.6; sc.add(sb2);
+    var sh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0x9aa4ac, roughness: 0.8 }));
+    sh.position.y = 1.24; sc.add(sh);
+    sc.position.set(211.5 + si * 1.4, -39.1, -0.2);
+    scene.add(sc);
+    fleeSci.push({ mesh: sc, x: 211.5 + si * 1.4, fleeing: false, gone: false, phase: si * 2 });
+  }
+
+  // breakable walls: the containment door and the facility's outer wall
+  function mkWall(x, w, h, y) {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 2.6),
+      new THREE.MeshStandardMaterial({ color: 0x272e37, roughness: 0.85, metalness: 0.3 }));
+    m.position.set(x, y, -0.6); scene.add(m);
+    var seams = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.12, 2.66),
+      new THREE.MeshStandardMaterial({ color: 0x11161c, roughness: 0.9 }));
+    seams.position.set(x, y + h * 0.2, -0.6); scene.add(seams);
+    BWALLS.push({ x: x, broken: false, mesh: m, seam: seams, h: h, y: y });
+  }
+  mkWall(214.5, 0.9, 5.2, -36.5);
+  mkWall(224, 0.9, 7.5, -35.4);
+
+  // shard pool for glass + wall breaks
+  for (var shi = 0; shi < 26; shi++) {
+    var sh2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0x9fb6c4, roughness: 0.3, transparent: true, opacity: 0 }));
+    scene.add(sh2);
+    shards.push({ mesh: sh2, t: 99, vx: 0, vy: 0, vz: 0, rx: 0, rz: 0 });
+  }
+
+  // outside: the night hillside down to the water
+  for (var hi2 = 0; hi2 < 8; hi2++) {
+    addPlatform(224 + hi2 * 2, 226.2 + hi2 * 2, -40.6 - 1.5 * hi2, 3);
+    var grass = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 3.2),
+      new THREE.MeshStandardMaterial({ color: 0x131a16, roughness: 1 }));
+    grass.position.set(225.1 + hi2 * 2, -40.75 - 1.5 * hi2, -0.6);
+    scene.add(grass);
+  }
+  addPlatform(238, 244, -50.6, 3); // the shore
+  var sky = new THREE.Mesh(new THREE.PlaneGeometry(40, 26),
+    new THREE.MeshBasicMaterial({ color: 0x0d1420, fog: false }));
+  sky.position.set(233, -38, -6); scene.add(sky);
+  var moon = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24),
+    new THREE.MeshBasicMaterial({ color: 0xcfd9e2, transparent: true, opacity: 0.5, fog: false }));
+  moon.position.set(237, -31, -5.9); scene.add(moon);
+  var sea = new THREE.Mesh(new THREE.PlaneGeometry(24, 5),
+    new THREE.MeshStandardMaterial({ color: 0x1a2836, roughness: 0.2, metalness: 0.5, transparent: true, opacity: 0.85 }));
+  sea.rotation.x = -Math.PI / 2;
+  sea.position.set(236, -49.9, -0.4); scene.add(sea);
+  BLOB.sea = sea;
+})();
+
+function burstShards(x, y, z, n, col) {
+  var made = 0;
+  for (var i = 0; i < shards.length && made < n; i++) {
+    var sh = shards[i];
+    if (sh.t < 3) continue;
+    sh.t = 0; made++;
+    sh.mesh.material.color.setHex(col || 0x9fb6c4);
+    sh.mesh.position.set(x + (Math.random() - 0.5) * 0.8, y + (Math.random() - 0.5) * 1.2, z + (Math.random() - 0.5) * 0.8);
+    sh.vx = (Math.random() - 0.3) * 5; sh.vy = 2.5 + Math.random() * 3.5; sh.vz = (Math.random() - 0.5) * 2;
+    sh.rx = (Math.random() - 0.5) * 9; sh.rz = (Math.random() - 0.5) * 9;
+    sh.mesh.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+  }
+}
+
+function updateBlob(dt) {
+  BLOB.locked = BLOB.mode === 'waking';
+  // breathing, always
+  var br = 1 + Math.sin(performance.now() * 0.0018) * 0.03;
+  blobCore.scale.setScalar(br);
+  if (BLOB.mode === 'none') {
+    if (P.x > 207.5 && P.y > -40 && !P.ended) { BLOB.mode = 'waking'; BLOB.t = 0; }
+    return;
+  }
+  if (BLOB.mode === 'waking') {
+    BLOB.t += dt;
+    P.vx = 0; P.vy = 0;
+    // the mass stirs, the glass crazes, then it goes
+    if (BLOB.t > 0.6 && !BLOB.glassBroken) {
+      glassMesh.material.opacity = 0.34 + Math.sin(BLOB.t * 30) * 0.06;
+    }
+    if (BLOB.t > 1.4 && !BLOB.glassBroken) {
+      BLOB.glassBroken = true;
+      glassMesh.visible = false;
+      burstShards(209, -36.3, -0.6, 12, 0x9fb6c4);
+      alarmLight.intensity = 2.6;
+      thud();
+      for (var fi = 0; fi < fleeSci.length; fi++) fleeSci[fi].fleeing = true;
+    }
+    if (BLOB.glassBroken) {
+      // the boy is drawn in
+      var dx = 209 - P.x, dy = -37.4 - P.y;
+      var dd = Math.sqrt(dx * dx + dy * dy);
+      if (dd > 0.15) { P.x += dx / dd * Math.min(dd, 2.4 * dt); P.y += dy / dd * Math.min(dd, 2.4 * dt); }
+    }
+    if (BLOB.t > 3.1) {
+      BLOB.mode = 'blob';
+      boy.visible = false;
+      P.x = 209; P.y = groundAt(209, -36); P.vx = 0; P.vy = 0;
+    }
+    return;
+  }
+  // shards fly + settle
+  for (var i = 0; i < shards.length; i++) {
+    var sh = shards[i];
+    if (sh.t >= 3) { sh.mesh.material.opacity = 0; continue; }
+    sh.t += dt;
+    sh.vy -= 16 * dt;
+    sh.mesh.position.x += sh.vx * dt;
+    sh.mesh.position.y += sh.vy * dt;
+    sh.mesh.position.z += sh.vz * dt;
+    sh.mesh.rotation.x += sh.rx * dt; sh.mesh.rotation.z += sh.rz * dt;
+    var fl = groundAt(sh.mesh.position.x, sh.mesh.position.y + 0.1);
+    if (sh.mesh.position.y < fl + 0.06) { sh.t = 3; sh.mesh.position.y = fl + 0.05; }
+    sh.mesh.material.opacity = Math.min(0.85, sh.t * 3) * (sh.t > 2 ? Math.max(0, 1 - (sh.t - 2)) : 1);
+  }
+  // the scientists run
+  for (i = 0; i < fleeSci.length; i++) {
+    var f = fleeSci[i];
+    if (!f.fleeing || f.gone) continue;
+    f.phase += dt * 9;
+    var blocked = false;
+    for (var wi = 0; wi < BWALLS.length; wi++) {
+      var w = BWALLS[wi];
+      if (!w.broken && f.x > w.x - 0.8 && f.x < w.x + 0.8) blocked = true;
+    }
+    if (!blocked) f.x += 4.2 * dt;
+    f.mesh.position.x = f.x;
+    f.mesh.position.y = groundAt(f.x, -30) + Math.abs(Math.sin(f.phase)) * 0.06;
+    f.mesh.rotation.y = Math.PI / 2;
+    if (f.x > 230) { f.gone = true; f.mesh.visible = false; }
+  }
+  // alarm pulse
+  if (BLOB.glassBroken) alarmLight.intensity = 1.6 + Math.sin(performance.now() * 0.012) * 1.2;
+
+  BLOB.smashT = Math.max(0, BLOB.smashT - dt);
+  if (BLOB.mode !== 'blob') return;
+  // -------- controlling the mass
+  blobMesh.position.set(P.x, P.y + 0.15 + Math.sin(performance.now() * 0.004) * 0.04, -0.4);
+  blobMesh.rotation.z -= P.vx * dt / 1.2;
+  blobArm.rotation.z = -0.5 + Math.sin(performance.now() * 0.003) * 0.15;
+  // coming to rest on the shore
+  if (P.x > 235 && P.grounded && Math.abs(P.vx) < 0.9) {
+    BLOB.restT += dt;
+    if (BLOB.restT > 2.5 && !P.ended) {
+      BLOB.mode = 'rest';
+      P.ended = true;
+      fadeEl.style.opacity = '1';
+      setTimeout(function () {
+        endEl.style.display = 'flex';
+        requestAnimationFrame(function () { endEl.style.opacity = '1'; });
+        fadeEl.style.opacity = '0';
+      }, 1400);
+    }
+  } else BLOB.restT = 0;
+  BLOB.sea.position.y = -49.9 + Math.sin(performance.now() * 0.0012) * 0.05;
+}
+
+function updateBlobMove(dt) {
+  var move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  if (move === 0 && P.grounded && P.x > 223 && P.x < 238) move = 0.55; // the hillside takes it
+  if (move !== 0) P.dir = move;
+  var accel = P.grounded ? 5.5 : 3;
+  P.vx += Math.max(-accel * dt, Math.min(accel * dt, move * 2.6 - P.vx));
+  var nx = P.x + P.vx * dt;
+  // smash through
+  for (var wi = 0; wi < BWALLS.length; wi++) {
+    var w = BWALLS[wi];
+    if (!w.broken && Math.abs(nx - w.x) < 1.5 && Math.abs(P.vx) > 0.8) {
+      w.broken = true; BLOB.walls++;
+      w.mesh.visible = false; w.seam.visible = false;
+      burstShards(w.x, w.y + 1, -0.4, 8, 0x39424d);
+      BLOB.smashT = 0.5; thud();
+    }
+  }
+  var blocked = false;
+  for (wi = 0; wi < BWALLS.length; wi++) {
+    var w2 = BWALLS[wi];
+    if (!w2.broken && Math.abs(nx - w2.x) < 1.35 && P.y < w2.y + w2.h / 2) blocked = true;
+  }
+  if (blocked) { nx = P.x; P.vx *= 0.4; }
+  if (nx > 241.5) { nx = 241.5; P.vx = Math.min(P.vx, 0); } // the sea takes its momentum
+  P.x = nx;
+  P.vy -= GRAV * dt;
+  P.y += P.vy * dt;
+  var g = groundAt(P.x, P.y + 0.42);
+  if (P.vy <= 0 && P.y <= g) { P.y = g; P.vy = 0; P.grounded = true; }
+  else P.grounded = false;
+  P.jumpBuf = Math.max(0, P.jumpBuf - dt);
+  if (P.jumpBuf > 0 && P.grounded) { P.vy = 5.2; P.grounded = false; P.jumpBuf = 0; thud(); }
+}
+
 // ---------------------------------------------------------------- the thing in the water (v6)
 var SHE = { x: 108, active: false, catches: 0, phase: 0 };
 var sheMesh, sheFace;
@@ -1574,7 +1823,9 @@ function update(dt) {
   if (phase !== 'play' || P.ended || P.dying) return;
 
   updateRide(dt);
-  if (!RIDE.locked) {
+  updateBlob(dt);
+  if (BLOB.mode === 'blob') { updateBlobMove(dt); }
+  else if (!RIDE.locked && !BLOB.locked) {
   var move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   if (move !== 0) P.dir = move;
   if (HELMET.on && HELMET.mode === 'husks') {
@@ -1652,7 +1903,7 @@ function update(dt) {
   }
   if (!keys.jump && P.vy > 3) P.vy = 3; // variable jump height
   } // end walk/wade branch
-  } // end !RIDE.locked
+  } // end walk branch dispatch
 
   // checkpoints
   for (var i = P.checkpoint + 1; i < CHECKPOINTS.length; i++) {
@@ -1677,16 +1928,7 @@ function update(dt) {
   if (P.x > 122.9 && P.y < -4 && P.y > -6 && RIDE.phase === 'none' && !P.ended) {
     RIDE.phase = 'board'; RIDE.t = 0;
   }
-  // the way on, past the tank: the black stair at the far rim
-  if (P.x > 199.0 && P.y > -39.5 && !P.ended) {
-    P.ended = true;
-    fadeEl.style.opacity = '1';
-    setTimeout(function () {
-      endEl.style.display = 'flex';
-      requestAnimationFrame(function () { endEl.style.opacity = '1'; });
-      fadeEl.style.opacity = '0';
-    }, 900);
-  }
+
 
   // splash ripple on entry
   if (splash.t < 0.05) {
@@ -1734,14 +1976,16 @@ function animateBoy(dt, now) {
 }
 
 // ---------------------------------------------------------------- camera
-var camX = 2, camY = 1.4;
+var camZ = 9.2, camX = 2, camY = 1.4;
 function updateCamera(dt) {
   var lookX = (RIDE.locked || RIDE.phase === 'done' && P.x < 126) ? 124.8 : P.x + P.dir * 2.1; // center the car during the descent
   camX += (lookX - camX) * Math.min(1, dt * 2.4);
   var ty = 1.5 + (P.y > 0 ? P.y * 0.55 : P.y * 0.8);
   if (P.y < -6) ty = P.y + 2.3; // deep sections: keep the boy framed
   camY += (ty - camY) * Math.min(1, dt * 2.0);
-  camera.position.set(camX, camY + 0.9, 9.2);
+  var targetZ = (BLOB.mode === 'blob' || BLOB.mode === 'rest') ? 12.5 : 9.2;
+  camZ += (targetZ - camZ) * Math.min(1, dt * 1.6);
+  camera.position.set(camX, camY + 0.9, camZ);
   camera.lookAt(camX, camY, 0);
 }
 
@@ -1838,7 +2082,7 @@ function updateAudio() {
       rumble._gain = rg;
     } catch (e) { rumble = null; }
   }
-  if (rumble) rumble._gain.gain.value = ((TRUCK.active || RIDE.phase === 'down') && !muted) ? 0.05 : 0;
+  if (rumble) rumble._gain.gain.value = ((TRUCK.active || RIDE.phase === 'down' || BLOB.smashT > 0) && !muted) ? 0.05 : 0;
   if (!shimmer) return;
   var prox = (P.x > 66 && P.x < 96) ? Math.max(0, 1 - Math.abs(P.x - BEAM.x) / 9) : 0;
   var herProx = HER.active ? Math.max(0, 1 - Math.abs(P.x - HER.x) / 8) : 0;
@@ -1851,7 +2095,7 @@ window.__DGsuspect = { beamCone: beamCone, beamGlow: beamGlow, beamSpot: beamSpo
 window.__DG = {
   boot: {
     meshes: scene.children.length, trees: treeCount,
-    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, car: 1, tankHer: 1, pylons: PYLONS.length, qa: QA
+    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, car: 1, tankHer: 1, pylons: PYLONS.length, blob: 1, qa: QA
   },
   state: function () {
     return {
@@ -1868,6 +2112,8 @@ window.__DG = {
       swimming: inTank(P.x, P.y) && P.y < TANK.surface - 0.35,
       herX: +HER.x.toFixed(2), herY: +HER.y.toFixed(2), herActive: HER.active, herCatches: HER.catches,
       gate2: +G2.open.toFixed(2), crank: +G2.crank.toFixed(2), inLight: boyInPylonLight() !== false,
+      blobMode: BLOB.mode, blobWalls: BLOB.walls, glassBroken: BLOB.glassBroken,
+      sciGone: fleeSci.filter(function (f) { return f.gone; }).length,
       helmet: HELMET.on, mode: HELMET.mode, gateOpen: +GATE.open.toFixed(2), plateHeld: GATE.held,
       husk0: +HUSKS[0].x.toFixed(2), husk1: +HUSKS[1].x.toFixed(2)
     };
