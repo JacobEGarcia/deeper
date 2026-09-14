@@ -1,4 +1,4 @@
-/* DEEPER v6 - a 3D spiritual sequel to Playdead's INSIDE (unofficial tribute).
+/* DEEPER v7 - a 3D spiritual sequel to Playdead's INSIDE (unofficial tribute).
    Side-on 2.5D platforming in a full 3D world: dark monochrome, amber accents,
    a boy alone, industrial dread, no dialogue, no HUD. */
 (function () {
@@ -943,6 +943,92 @@ function updateShe(dt) {
   }
 }
 
+
+// ---------------------------------------------------------------- the watchers (v7): lab window, gantry line, her hair
+var scientists = [];
+(function () {
+  // observation window: cold lit glass in the back wall, dark figures behind it
+  var win = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 0.08),
+    new THREE.MeshBasicMaterial({ color: 0xbfd3e2, transparent: true, opacity: 0.5 }));
+  win.position.set(110, 0.05, -2.72);
+  scene.add(win);
+  var wl = new THREE.PointLight(0xbfd3e2, 2.2, 8, 2);
+  wl.position.set(110, 0.2, -2.0);
+  scene.add(wl);
+  var fig = new THREE.MeshStandardMaterial({ color: 0x0a0d11, roughness: 1 });
+  for (var i = 0; i < 4; i++) {
+    var g = new THREE.Group();
+    var torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.5, 5, 8), fig);
+    torso.position.y = 0.45;
+    g.add(torso);
+    var head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), fig);
+    head.position.y = 0.92;
+    g.add(head);
+    g.position.set(108.9 + i * 0.75, -0.62, -2.85);
+    scene.add(g);
+    scientists.push({ mesh: g, head: head });
+  }
+})();
+
+// the husk line on the gantry
+var gantryHusks = [];
+(function () {
+  var rail = new THREE.Mesh(new THREE.BoxGeometry(9, 0.08, 0.6), MAT.fence);
+  rail.position.set(116, 1.1, -2.6);
+  scene.add(rail);
+  for (var i = 0; i < 6; i++) {
+    var h = makeHusk(112.5 + i * 1.4);
+    h.mesh.position.set(h.x, 1.14, -2.6);
+    h.gantry = true;
+    gantryHusks.push(h);
+  }
+})();
+
+// her hair breaks the surface when she is close
+var hairTip;
+(function () {
+  hairTip = new THREE.Group();
+  var m = new THREE.MeshStandardMaterial({ color: 0x0a0d11, roughness: 1 });
+  for (var i = 0; i < 3; i++) {
+    var t = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.35, 6), m);
+    t.position.set(-0.08 + i * 0.08, 0.12, -0.05 + i * 0.04);
+    t.rotation.z = -0.25 + i * 0.2;
+    hairTip.add(t);
+  }
+  hairTip.visible = false;
+  scene.add(hairTip);
+})();
+
+var gantryDir = 1, gantryT = 0;
+function updateWatchers(dt) {
+  // scientists track the boy while he wades past
+  for (var i = 0; i < scientists.length; i++) {
+    var sc = scientists[i];
+    var dx = P.x - sc.mesh.position.x;
+    var want = Math.abs(dx) < 7 && P.x > 100 ? Math.max(-0.5, Math.min(0.5, dx * 0.09)) : 0;
+    sc.head.rotation.y += (want - sc.head.rotation.y) * Math.min(1, dt * 3);
+  }
+  // the gantry line marches back and forth, slow and tireless
+  gantryT += dt * 0.35 * gantryDir;
+  if (gantryT > 1.6) gantryDir = -1;
+  if (gantryT < -0.2) gantryDir = 1;
+  for (i = 0; i < gantryHusks.length; i++) {
+    var h = gantryHusks[i];
+    h.phase += dt * 5;
+    h.mesh.position.x = h.x + gantryT;
+    h.mesh.position.y = 1.14 + Math.abs(Math.cos(h.phase)) * 0.02;
+    h.mesh.rotation.z = 0.06 + Math.sin(h.phase) * 0.07;
+    h.mesh.rotation.y = gantryDir > 0 ? 0 : Math.PI;
+  }
+  // her hair tips the surface when she is nearly on him
+  if (SHE.active && Math.abs(P.x - SHE.x) < 1.6) {
+    hairTip.visible = true;
+    hairTip.position.set(SHE.x + (P.x >= SHE.x ? 0.3 : -0.3), WATER.surface + 0.05, 0);
+  } else {
+    hairTip.visible = false;
+  }
+}
+
 // ---------------------------------------------------------------- player state
 var P = {
   x: 2, y: 0, vx: 0, vy: 0, dir: 1, grounded: true,
@@ -1127,6 +1213,7 @@ function update(dt) {
   updateHelmetGate(dt);
   updateWater(dt);
   updateShe(dt);
+  updateWatchers(dt);
 
   // the elevator at the end of the flooded hall
   if (P.x > 123.6 && P.y < -4 && !P.ended) {
@@ -1300,7 +1387,7 @@ window.__DGsuspect = { beamCone: beamCone, beamGlow: beamGlow, beamSpot: beamSpo
 window.__DG = {
   boot: {
     meshes: scene.children.length, trees: treeCount,
-    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, qa: QA
+    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, qa: QA
   },
   state: function () {
     return {
@@ -1312,6 +1399,7 @@ window.__DG = {
       dogX: +DOG.x.toFixed(2), dogActive: DOG.active, dogGivenUp: DOG.givenUp, dogCatches: DOG.catches,
       manX: +MAN.x.toFixed(2), manActive: MAN.active, manCatches: MAN.catches, truckX: +TRUCK.x.toFixed(2),
       wading: inWater(P.x, P.y), sheX: +SHE.x.toFixed(2), sheActive: SHE.active, sheCatches: SHE.catches,
+      hairOut: hairTip.visible, gantry0: +gantryHusks[0].mesh.position.x.toFixed(2), sciYaw0: +scientists[0].head.rotation.y.toFixed(3),
       helmet: HELMET.on, mode: HELMET.mode, gateOpen: +GATE.open.toFixed(2), plateHeld: GATE.held,
       husk0: +HUSKS[0].x.toFixed(2), husk1: +HUSKS[1].x.toFixed(2)
     };
