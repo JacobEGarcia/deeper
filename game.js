@@ -9,7 +9,7 @@ var QA = params.has('qa');
 
 // ---------------------------------------------------------------- setup
 var renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -839,9 +839,7 @@ var waterMesh;
     new THREE.MeshBasicMaterial({ color: 0xffcf8e, transparent: true, opacity: 0.85 }));
   glow.position.set(124.8, -3.45, -1.68);
   scene.add(glow);
-  var el = new THREE.PointLight(0xffcf8e, 6, 10, 2);
-  el.position.set(124.6, -2.6, -0.4);
-  scene.add(el);
+
 })();
 
 var hallWash = new THREE.PointLight(0x8fa6bd, 3.2, 22, 1.5);
@@ -977,8 +975,6 @@ var carGroup, carLight, carGlowM, doorsL = [], doorsR = [];
     var ds = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.07, 0.06),
       new THREE.MeshBasicMaterial({ color: 0xaac6dd, transparent: true, opacity: 0.7 }));
     ds.position.set(131 + i * 8, -38.35, -2.75); scene.add(ds);
-    var dl = new THREE.PointLight(0x9fc0d8, 3.4, 13, 2);
-    dl.position.set(131 + i * 8, -39.2, -1.2); scene.add(dl);
     // visible cone + floor pool so the cold light reads
     var cone = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 6.2),
       new THREE.MeshBasicMaterial({ color: 0x9fc0d8, transparent: true, opacity: 0.075, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
@@ -1079,10 +1075,9 @@ var PYLONS = [166, 184];
     var wf = new THREE.Mesh(new THREE.BoxGeometry(6.5, 9, 0.7), MAT.wallHi);
     wf.position.set(168 + wi * 16, -48, -3.0); scene.add(wf);
     var wg = new THREE.Mesh(new THREE.BoxGeometry(5.6, 8.1, 0.1),
-      new THREE.MeshBasicMaterial({ color: 0x46686e, transparent: true, opacity: 0.45 }));
+      new THREE.MeshBasicMaterial({ color: 0x46686e, transparent: true, opacity: 0.55 }));
     wg.position.set(168 + wi * 16, -48, -2.6); scene.add(wg);
-    var wl2 = new THREE.PointLight(0x51767c, 1.8, 15, 2);
-    wl2.position.set(168 + wi * 16, -48, -1.2); scene.add(wl2);
+
   }
   // sunken catwalk wreck on the floor
   var wreck = new THREE.Mesh(new THREE.BoxGeometry(9, 0.3, 1.6), MAT.dark);
@@ -1321,21 +1316,31 @@ var BWALLS = [], shards = [], fleeSci = [];
   cw.position.set(209, -31.4, -3.4); scene.add(cw);
   var cc = new THREE.Mesh(new THREE.BoxGeometry(19, 1.2, 8), MAT.dark);
   cc.position.set(209, -23.1, -0.5); scene.add(cc);
-  var cl1 = new THREE.PointLight(0x9fc0d8, 3.0, 14, 2);
-  cl1.position.set(204, -26, -1.2); scene.add(cl1);
-  var cl2 = new THREE.PointLight(0x9fc0d8, 2.4, 12, 2);
-  cl2.position.set(214, -26, -1.2); scene.add(cl2);
+  var cl1 = new THREE.PointLight(0x9fc0d8, 3.4, 16, 2);
+  cl1.position.set(209, -26, -1.0); scene.add(cl1);
   var cstrip = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.06),
     new THREE.MeshBasicMaterial({ color: 0xaac6dd, transparent: true, opacity: 0.7 }));
   cstrip.position.set(204, -24.4, -2.75); scene.add(cstrip);
   var cstrip2 = cstrip.clone(); cstrip2.position.set(214, -24.4, -2.75); scene.add(cstrip2);
+  for (var ci = 0; ci < 2; ci++) {
+    var ccone = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 13.5),
+      new THREE.MeshBasicMaterial({ color: 0x9fc0d8, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    ccone.position.set(204 + ci * 10, -31.2, -2.5); scene.add(ccone);
+    var cpool = new THREE.Mesh(new THREE.CircleGeometry(1.8, 20),
+      new THREE.MeshBasicMaterial({ color: 0x9fc0d8, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false }));
+    cpool.rotation.x = -Math.PI / 2;
+    cpool.position.set(204 + ci * 10, -39.05, -0.6); scene.add(cpool);
+  }
+  // the sphere glows the same pale green as the tank windows
+  var sphereGlow = new THREE.PointLight(0x51767c, 1.6, 8, 2);
+  sphereGlow.position.set(209, -36, 0.6); scene.add(sphereGlow);
   // alarm light, off until the glass breaks
   alarmLight = new THREE.PointLight(0xff7a4a, 0, 16, 2);
   alarmLight.position.set(209, -25, 0.5); scene.add(alarmLight);
 
   // the glass sphere and what is inside it
   glassMesh = new THREE.Mesh(new THREE.SphereGeometry(2.6, 24, 18),
-    new THREE.MeshStandardMaterial({ color: 0x8fb6c4, roughness: 0.08, metalness: 0.15, transparent: true, opacity: 0.22 }));
+    new THREE.MeshStandardMaterial({ color: 0x6f969e, roughness: 0.08, metalness: 0.15, transparent: true, opacity: 0.24 }));
   glassMesh.position.set(209, -36.3, -0.6); scene.add(glassMesh);
   var gbase = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.3, 0.5, 20), MAT.wallHi);
   gbase.position.set(209, -38.85, -0.6); scene.add(gbase);
