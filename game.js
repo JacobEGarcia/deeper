@@ -1,4 +1,4 @@
-/* DEEPER v2 - a 3D spiritual sequel to Playdead's INSIDE (unofficial tribute).
+/* DEEPER v6 - a 3D spiritual sequel to Playdead's INSIDE (unofficial tribute).
    Side-on 2.5D platforming in a full 3D world: dark monochrome, amber accents,
    a boy alone, industrial dread, no dialogue, no HUD. */
 (function () {
@@ -479,13 +479,477 @@ function animateDog(now) {
   dog.rotation.z = 0.06 * s;
 }
 
+
+// ---------------------------------------------------------------- the truck + the masked man (v3)
+var truck = new THREE.Group();
+var truckLights = [];
+(function () {
+  var body = new THREE.MeshStandardMaterial({ color: 0x0a0c0f, roughness: 0.9 });
+  var cargo = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.0, 1.9), body);
+  cargo.position.set(-1.1, 1.55, 0);
+  truck.add(cargo);
+  var cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.8), body);
+  cab.position.set(1.6, 1.3, 0);
+  truck.add(cab);
+  var wheelM = new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 1 });
+  [[-2.3, 0], [-0.6, 0], [1.7, 0]].forEach(function (w) {
+    var wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 12), wheelM);
+    wheel.rotation.x = Math.PI / 2;
+    wheel.position.set(w[0], 0.42, 0.75);
+    truck.add(wheel);
+  });
+  // headlights: two cold-amber cones lancing ahead along the ground
+  for (var i = 0; i < 2; i++) {
+    var cone = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 1.1, 7, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+    );
+    cone.rotation.z = Math.PI / 2 + 0.06;
+    cone.position.set(2.3 + 3.5, 0.75, i ? 0.55 : -0.55);
+    truck.add(cone);
+    var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+    lamp.position.set(2.36, 0.85, i ? 0.55 : -0.55);
+    truck.add(lamp);
+  }
+  var glow = new THREE.Mesh(
+    new THREE.CircleGeometry(1.6, 20),
+    new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.set(6.2, 0.05, 0);
+  truck.add(glow);
+  var spot = new THREE.SpotLight(0xffd9a0, 14, 12, 0.5, 0.5, 1.8);
+  spot.position.set(2.4, 0.9, 0);
+  spot.target.position.set(8, 0.2, 0);
+  truck.add(spot); truck.add(spot.target);
+  truck.visible = false;
+  scene.add(truck);
+})();
+var TRUCK = { x: -30, active: false };
+
+var man = new THREE.Group();
+var manLegs = {};
+(function () {
+  var coat = new THREE.MeshStandardMaterial({ color: 0x11141a, roughness: 0.95 });
+  var mask = new THREE.MeshBasicMaterial({ color: 0xd8d3c6 });
+  var torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.5, 6, 10), coat);
+  torso.position.y = 1.0;
+  man.add(torso);
+  var head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), coat);
+  head.position.y = 1.52;
+  man.add(head);
+  var face = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), mask);
+  face.position.set(0.12, 1.52, 0);
+  face.rotation.y = Math.PI / 2;
+  man.add(face);
+  function limb(r, len, px, py) {
+    var pivot = new THREE.Group();
+    pivot.position.set(px, py, 0);
+    var m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 8), coat);
+    m.position.y = -len / 2 - r;
+    pivot.add(m);
+    man.add(pivot);
+    return pivot;
+  }
+  manLegs.legL = limb(0.06, 0.5, 0, 0.78); manLegs.legL.position.z = 0.08;
+  manLegs.legR = limb(0.06, 0.5, 0, 0.78); manLegs.legR.position.z = -0.08;
+  manLegs.armL = limb(0.05, 0.4, 0, 1.28); manLegs.armL.position.z = 0.22;
+  manLegs.armR = limb(0.05, 0.4, 0, 1.28); manLegs.armR.position.z = -0.22;
+  // flashlight: held forward, amber cone + ground pool
+  var torch = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.22, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.6, metalness: 0.4 }));
+  torch.rotation.z = Math.PI / 2;
+  torch.position.set(0.3, 1.05, 0.24);
+  man.add(torch);
+  var fcone = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.03, 0.7, 4.5, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffcf8e, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+  );
+  fcone.rotation.z = Math.PI / 2 + 0.12;
+  fcone.position.set(0.4 + 2.25, 0.85, 0.24);
+  man.add(fcone);
+  var fglow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.85, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffcf8e, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  fglow.rotation.x = -Math.PI / 2;
+  fglow.position.set(3.1, 0.05 - 1.0, 0.24); // relative: man group origin at feet
+  man.add(fglow);
+  var fspot = new THREE.SpotLight(0xffcf8e, 8, 8, 0.55, 0.5, 1.8);
+  fspot.position.set(0.35, 1.05, 0.24);
+  fspot.target.position.set(4, 0, 0.24);
+  man.add(fspot); man.add(fspot.target);
+  man.visible = false;
+  scene.add(man);
+})();
+var MAN = { x: -30, y: 0, vy: 0, active: false, gaveUp: false, phase: 0, catches: 0 };
+
+function updateHunters(dt) {
+  if (DOG.active && !TRUCK.active) { TRUCK.active = true; truck.visible = true; TRUCK.x = Math.min(DOG.x - 6, P.x - 18); }
+  if (DOG.active && !MAN.active && !MAN.gaveUp) { MAN.active = true; man.visible = true; MAN.x = DOG.x - 4; }
+  // truck paces the chase but cannot cross the pit
+  if (TRUCK.active) {
+    var target = Math.min(P.x - 9.5, 18.6);
+    TRUCK.x += Math.max(-6 * dt, Math.min(6 * dt, target - TRUCK.x));
+    truck.position.set(TRUCK.x, 0, -1.6);
+    if (DOG.givenUp) { TRUCK.active = false; truck.visible = false; }
+  }
+  if (!MAN.active) return;
+  if (P.x > 42.5 || (P.y > 1.5 && P.grounded) || P.x >= 45) {
+    MAN.active = false; MAN.gaveUp = true; man.visible = false;
+    return;
+  }
+  var dx = P.x - MAN.x;
+  MAN.x += Math.sign(dx) * Math.min(Math.abs(dx), 4.45 * dt);
+  var g = dogGroundAt(MAN.x, MAN.y + 0.5);
+  if (g === -Infinity) g = -100;
+  if (MAN.y <= 0.01 && MAN.x > 19.4 && MAN.x < 20.2 && P.x > 22.2) MAN.vy = 7.8;
+  MAN.vy -= 22 * dt;
+  MAN.y += MAN.vy * dt;
+  if (MAN.vy <= 0 && MAN.y <= g) { MAN.y = g; MAN.vy = 0; }
+  if (MAN.y < -4) { MAN.x = P.x - 15; MAN.y = 0; MAN.vy = 0; }
+  MAN.phase += dt * 8;
+  if (Math.abs(MAN.x - P.x) < 0.5 && Math.abs(MAN.y - P.y) < 0.9 && !P.dying) {
+    MAN.catches++;
+    die('man');
+    MAN.x = P.x - 15; MAN.y = 0;
+  }
+  man.position.set(MAN.x, MAN.y, 0);
+  var s = Math.sin(MAN.phase);
+  manLegs.legL.rotation.x = s * 0.8; manLegs.legR.rotation.x = -s * 0.8;
+  manLegs.armL.rotation.x = -s * 0.6; manLegs.armR.rotation.x = s * 0.6;
+  man.rotation.y = P.x >= MAN.x ? 0 : Math.PI;
+}
+
+
+// ---------------------------------------------------------------- the helmet + husks (v4)
+var HELMET = { on: false, mode: 'boy' };
+var GATE = { x: 62, open: 0, held: false, baseY: 2.2 };
+var PLATE = { x: 58, pressed: 0 };
+var pedestal, gateMesh, plateMesh, plateRing, helmetMesh;
+
+(function () {
+  // pedestal with the helmet, amber glow
+  var ped = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.9, 10),
+    new THREE.MeshStandardMaterial({ color: 0x1a2028, roughness: 0.7, metalness: 0.4 }));
+  ped.position.set(50, 2.65, -1.1);
+  scene.add(ped);
+  helmetMesh = new THREE.Group();
+  var dome = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.6),
+    new THREE.MeshStandardMaterial({ color: 0x3a4149, roughness: 0.35, metalness: 0.7 }));
+  helmetMesh.add(dome);
+  var led = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffb45e }));
+  led.position.set(0, 0.14, 0);
+  helmetMesh.add(led);
+  helmetMesh.position.set(50, 3.2, -1.1);
+  scene.add(helmetMesh);
+  var pl = new THREE.PointLight(0xffb45e, 2.2, 5, 2);
+  pl.position.set(50, 3.4, -0.4);
+  scene.add(pl);
+  pedestal = ped;
+
+  // pressure plate
+  plateMesh = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.1, 1.0),
+    new THREE.MeshStandardMaterial({ color: 0x2a3038, roughness: 0.6, metalness: 0.5 }));
+  plateMesh.position.set(PLATE.x, 2.25, 0);
+  scene.add(plateMesh);
+  plateRing = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.6, 20),
+    new THREE.MeshBasicMaterial({ color: 0xffb45e, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
+  plateRing.rotation.x = -Math.PI / 2;
+  plateRing.position.set(PLATE.x, 2.32, 0);
+  scene.add(plateRing);
+
+  // the gate: a heavy slab that slides up out of the yard wall
+  gateMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.4, 3.4),
+    new THREE.MeshStandardMaterial({ color: 0x232a33, roughness: 0.7, metalness: 0.5 }));
+  gateMesh.position.set(GATE.x, GATE.baseY + 1.7, 0);
+  scene.add(gateMesh);
+  var stripe = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.14, 3.42), MAT.amberGlow);
+  stripe.position.y = -1.5;
+  gateMesh.add(stripe);
+})();
+
+// the husks: pale workers, arms slack, heads bowed
+var HUSKS = [];
+function makeHusk(x) {
+  var g = new THREE.Group();
+  var skin = new THREE.MeshStandardMaterial({ color: 0x8f8d86, roughness: 0.95 });
+  var torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 6, 10), skin);
+  torso.position.y = 0.86; torso.rotation.z = 0.1;
+  g.add(torso);
+  var head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 12), skin);
+  head.position.set(0.08, 1.26, 0);
+  g.add(head);
+  var armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.4, 4, 8), skin);
+  armL.position.set(0.05, 0.82, 0.21); armL.rotation.x = 0.12;
+  g.add(armL);
+  var armR = armL.clone(); armR.position.z = -0.21;
+  g.add(armR);
+  var legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.44, 4, 8), skin);
+  legL.position.set(0, 0.42, 0.08);
+  g.add(legL);
+  var legR = legL.clone(); legR.position.z = -0.08;
+  g.add(legR);
+  g.position.set(x, GATE.baseY, 0);
+  scene.add(g);
+  return { mesh: g, x: x, dir: 1, phase: Math.random() * 6 };
+}
+HUSKS.push(makeHusk(54.6));
+HUSKS.push(makeHusk(55.6));
+
+function huskWalk(h, dx) {
+  h.x += dx;
+  h.x = Math.max(46, Math.min(69.4, h.x));
+  if (dx !== 0) h.dir = Math.sign(dx);
+}
+
+function updateHelmetGate(dt) {
+  // plate held by the boy or any husk
+  var held = false;
+  if (Math.abs(P.x - PLATE.x) < 0.7 && Math.abs(P.y - GATE.baseY) < 0.3) held = true;
+  for (var i = 0; i < HUSKS.length; i++) {
+    if (Math.abs(HUSKS[i].x - PLATE.x) < 0.7) held = true;
+  }
+  GATE.held = held;
+  var target = held ? 1 : 0;
+  var rate = held ? 2.5 : 2.0; // slams shut in half a second
+  GATE.open += Math.max(-rate * dt, Math.min(rate * dt, target - GATE.open));
+  gateMesh.position.y = GATE.baseY + 1.7 + GATE.open * 3.0;
+  plateMesh.position.y = 2.25 - (held ? 0.05 : 0);
+  plateRing.material.opacity = held ? 0.75 : 0.25;
+  if (helmetMesh && !HELMET.on) {
+    helmetMesh.position.y = 3.2 + Math.sin(performance.now() * 0.003) * 0.05;
+    helmetMesh.position.z = -1.1;
+    helmetMesh.rotation.y += dt;
+  }
+}
+
+function handleAction() {
+  if (phase !== 'play' || P.ended) return;
+  if (!HELMET.on && Math.abs(P.x - 50) < 1.4 && Math.abs(P.y - GATE.baseY) < 0.4) {
+    HELMET.on = true;
+    helmetMesh.visible = false;
+    boyHelmet.visible = true;
+    return;
+  }
+  if (HELMET.on) {
+    HELMET.mode = HELMET.mode === 'boy' ? 'husks' : 'boy';
+  }
+}
+
+// the helmet on the boy's head (hidden until picked up)
+var boyHelmet = new THREE.Group();
+(function () {
+  var dome = new THREE.Mesh(new THREE.SphereGeometry(0.165, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    new THREE.MeshStandardMaterial({ color: 0x3a4149, roughness: 0.35, metalness: 0.7 }));
+  boyHelmet.add(dome);
+  var ant = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6),
+    new THREE.MeshStandardMaterial({ color: 0x222630, roughness: 0.5, metalness: 0.6 }));
+  ant.position.set(-0.05, 0.2, 0);
+  boyHelmet.add(ant);
+  var tip = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffb45e }));
+  tip.position.set(-0.05, 0.29, 0);
+  boyHelmet.add(tip);
+  boyHelmet.position.set(0, 1.16, 0);
+  boyHelmet.visible = false;
+  boy.add(boyHelmet);
+})();
+
+
+// ---------------------------------------------------------------- the interior (v5): shaft, flooded basement, elevator
+var WATER = { x1: 100, x2: 122, surface: -3.9 };
+var ripples = [], debris = [], cables = [];
+
+// floors: shaft bottom / flooded hall
+addPlatform(100, 126, -5, 3);
+// shaft walls
+(function () {
+  var wallM = MAT.wall;
+  var wl = new THREE.Mesh(new THREE.BoxGeometry(0.6, 9.5, 4.2), wallM);
+  wl.position.set(99.4, -0.4, 0); scene.add(wl);
+  // interior back wall + ceiling
+  var back = new THREE.Mesh(new THREE.BoxGeometry(28, 12, 1.2), MAT.wall);
+  back.position.set(112, -0.5, -3.4); scene.add(back);
+  var ceil = new THREE.Mesh(new THREE.BoxGeometry(28, 1.2, 8), MAT.dark);
+  ceil.position.set(112, 3.9, -0.5); scene.add(ceil);
+  // amber strip lights along the hall
+  for (var i = 0; i < 3; i++) {
+    var strip = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.06), MAT.amberGlow);
+    strip.position.set(104 + i * 7, 2.9, -2.75);
+    scene.add(strip);
+    var sl = new THREE.PointLight(0xffb45e, 2.5, 9, 2);
+    sl.position.set(104 + i * 7, 2.6, -1.6);
+    scene.add(sl);
+  }
+  // pipes down the shaft
+  var pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 9, 8), MAT.fence);
+  pipe.position.set(99.75, -0.5, -1.5); scene.add(pipe);
+})();
+
+// the door from the yard now opens inward and stays open (ending moved to the elevator)
+// water surface
+var waterMesh;
+(function () {
+  waterMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(WATER.x2 - WATER.x1, 4.0, 40, 1),
+    new THREE.MeshStandardMaterial({ color: 0x22303e, roughness: 0.18, metalness: 0.6, transparent: true, opacity: 0.78 })
+  );
+  waterMesh.rotation.x = -Math.PI / 2;
+  waterMesh.position.set((WATER.x1 + WATER.x2) / 2, WATER.surface, 0);
+  scene.add(waterMesh);
+  // ripple pool
+  for (var i = 0; i < 10; i++) {
+    var r = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.22, 20),
+      new THREE.MeshBasicMaterial({ color: 0x9fb6cc, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    r.rotation.x = -Math.PI / 2;
+    r.position.y = WATER.surface + 0.02;
+    scene.add(r);
+    ripples.push({ mesh: r, t: 99 });
+  }
+  // floating debris
+  for (i = 0; i < 3; i++) {
+    var d = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), MAT.crate);
+    d.position.set(104 + i * 6, WATER.surface + 0.02, -0.6 + i * 0.5);
+    d.rotation.y = i * 1.1;
+    scene.add(d);
+    debris.push(d);
+  }
+  // hanging cables
+  for (i = 0; i < 7; i++) {
+    var cx = 101.5 + i * 3.1, z = -1.8 + (i % 3) * 0.9;
+    var pts = [];
+    for (var k = 0; k <= 6; k++) {
+      var u = k / 6;
+      pts.push(new THREE.Vector3(cx + Math.sin(u * Math.PI) * (0.3 - i * 0.03), 3.3 - u * (4.2 + (i % 2)), z));
+    }
+    var tube = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, 0.022, 5, false),
+      new THREE.MeshStandardMaterial({ color: 0x141920, roughness: 0.9 }));
+    scene.add(tube);
+    cables.push({ mesh: tube, x: cx, i: i });
+  }
+})();
+
+// the elevator at the far end
+(function () {
+  var frame = new THREE.Mesh(new THREE.BoxGeometry(2.0, 3.4, 0.4), MAT.wallHi);
+  frame.position.set(124.8, -3.3, -1.9);
+  scene.add(frame);
+  var glow = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.9, 0.1),
+    new THREE.MeshBasicMaterial({ color: 0xffcf8e, transparent: true, opacity: 0.85 }));
+  glow.position.set(124.8, -3.45, -1.68);
+  scene.add(glow);
+  var el = new THREE.PointLight(0xffcf8e, 6, 10, 2);
+  el.position.set(124.6, -2.6, -0.4);
+  scene.add(el);
+})();
+
+var hallWash = new THREE.PointLight(0x8fa6bd, 3.2, 22, 1.5);
+hallWash.position.set(110, 0.8, 1.8);
+scene.add(hallWash);
+var rippleTimer = 0, splash = { t: 9 };
+function inWater(x, y) { return x > WATER.x1 && x < WATER.x2 && y < WATER.surface; }
+
+function updateWater(dt) {
+  // surface undulation
+  var pos = waterMesh.geometry.attributes.position;
+  var now = performance.now() * 0.001;
+  for (var i = 0; i < pos.count; i++) {
+    pos.setZ(i, Math.sin(now * 1.4 + pos.getX(i) * 1.1) * 0.03);
+  }
+  pos.needsUpdate = true;
+  for (i = 0; i < ripples.length; i++) {
+    var r = ripples[i];
+    r.t += dt;
+    if (r.t < 1.2) {
+      var u = r.t / 1.2;
+      r.mesh.scale.setScalar(1 + u * 3.2);
+      r.mesh.material.opacity = 0.4 * (1 - u);
+    } else r.mesh.material.opacity = 0;
+  }
+  for (i = 0; i < debris.length; i++) {
+    debris[i].position.y = WATER.surface + 0.02 + Math.sin(now * 1.2 + i * 2.1) * 0.035;
+    debris[i].rotation.z = Math.sin(now * 0.9 + i) * 0.05;
+  }
+  for (i = 0; i < cables.length; i++) {
+    cables[i].mesh.rotation.z = Math.sin(now * 0.45 + cables[i].i * 1.3) * 0.035;
+  }
+  splash.t += dt;
+  // wading ripples
+  if (inWater(P.x, P.y) && Math.abs(P.vx) > 0.3) {
+    rippleTimer -= dt;
+    if (rippleTimer <= 0) {
+      rippleTimer = 0.33;
+      var best = ripples[0];
+      for (i = 0; i < ripples.length; i++) if (ripples[i].t > best.t) best = ripples[i];
+      best.t = 0;
+      best.mesh.position.set(P.x, WATER.surface + 0.02, 0);
+      best.mesh.scale.setScalar(1);
+    }
+  }
+}
+
+
+// ---------------------------------------------------------------- the thing in the water (v6)
+var SHE = { x: 108, active: false, catches: 0, phase: 0 };
+var sheMesh, sheFace;
+(function () {
+  sheMesh = new THREE.Group();
+  var bodyM = new THREE.MeshStandardMaterial({ color: 0x06090c, roughness: 1 });
+  var body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.1, 6, 10), bodyM);
+  body.rotation.z = Math.PI / 2;
+  sheMesh.add(body);
+  // hair: trailing dark strands
+  for (var i = 0; i < 5; i++) {
+    var strand = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.05, 0.9, 5), bodyM);
+    strand.rotation.z = Math.PI / 2 + 0.35 + i * 0.12;
+    strand.position.set(-0.7 - i * 0.08, 0.05 * Math.sin(i), -0.12 + i * 0.06);
+    sheMesh.add(strand);
+  }
+  // the pale face, only lit when close
+  sheFace = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10),
+    new THREE.MeshBasicMaterial({ color: 0xc9cdc2, transparent: true, opacity: 0 }));
+  sheFace.position.set(0.62, 0.08, 0);
+  sheMesh.add(sheFace);
+  sheMesh.position.set(SHE.x, WATER.surface - 0.55, 0);
+  sheMesh.visible = false;
+  scene.add(sheMesh);
+})();
+
+function updateShe(dt) {
+  var boyIn = inWater(P.x, P.y);
+  if (!SHE.active && boyIn && P.x > WATER.x1 + 1 && phase === 'play' && !P.ended) {
+    SHE.active = true;
+    SHE.x = P.x - 9;
+    sheMesh.visible = true;
+  }
+  if (!SHE.active) return;
+  if (!boyIn) { sheMesh.visible = false; SHE.active = false; return; }
+  SHE.phase += dt;
+  // she drifts toward the ripples - faster when the boy moves
+  var dx = P.x - SHE.x;
+  var speed = 1.1 + Math.min(0.55, Math.abs(P.vx) * 0.3);
+  SHE.x += Math.sign(dx) * Math.min(Math.abs(dx), speed * dt);
+  SHE.x = Math.max(WATER.x1 - 4, Math.min(WATER.x2 - 0.5, SHE.x));
+  sheMesh.position.set(SHE.x, WATER.surface - 0.55 + Math.sin(SHE.phase * 0.9) * 0.06, 0);
+  sheMesh.rotation.y = dx >= 0 ? 0 : Math.PI;
+  // the face pales as she closes in
+  var dist = Math.abs(dx);
+  sheFace.material.opacity = Math.max(0, 1 - dist / 5) * 0.95;
+  if (dist < 0.55 && !P.dying) {
+    SHE.catches++;
+    die('water');
+    SHE.active = false; sheMesh.visible = false;
+  }
+}
+
 // ---------------------------------------------------------------- player state
 var P = {
   x: 2, y: 0, vx: 0, vy: 0, dir: 1, grounded: true,
   runPhase: 0, coyote: 0, jumpBuf: 0,
   checkpoint: 0, deaths: 0, caught: 0, ended: false, dying: false
 };
-var CHECKPOINTS = [2, 30, 47, 72];
+var CHECKPOINTS = [2, 30, 47, 72, 99];
 var GRAV = 22, MOVE = 4.3, JUMP_V = 8.8;
 
 // ---------------------------------------------------------------- input
@@ -503,6 +967,7 @@ var fadeEl = document.getElementById('fade');
 window.addEventListener('keydown', function (e) {
   if (phase === 'title') { startGame(); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
+  if (e.code === 'KeyE') { handleAction(); return; }
   if (e.code === 'KeyR' && P.ended) { restart(); return; }
   var k = keymap[e.code];
   if (k) {
@@ -529,6 +994,11 @@ function restart() {
   P.deaths = 0; P.caught = 0; P.ended = false; P.dying = false;
   CRATE.x = 38.5;
   DOG.active = false; DOG.givenUp = false; DOG.catches = 0; dog.visible = false;
+  MAN.active = false; MAN.gaveUp = false; MAN.catches = 0; man.visible = false;
+  HELMET.on = false; HELMET.mode = 'boy'; boyHelmet.visible = false; helmetMesh.visible = true;
+  SHE.active = false; SHE.catches = 0; sheMesh.visible = false;
+  HUSKS[0].x = 54.6; HUSKS[1].x = 55.6;
+  TRUCK.active = false; truck.visible = false;
   phase = 'play';
   endEl.style.opacity = '0';
   setTimeout(function () { endEl.style.display = 'none'; }, 1100);
@@ -546,6 +1016,7 @@ function die(cause) {
     P.y = P.checkpoint === 2 ? 2.3 : 0;
     P.vx = 0; P.vy = 0; P.dying = false;
     if (DOG.active) { DOG.x = P.x - 14; DOG.y = 0; DOG.vy = 0; }
+    if (MAN.active) { MAN.x = P.x - 15; MAN.y = 0; MAN.vy = 0; }
     fadeEl.style.opacity = '0';
   }, 460);
 }
@@ -565,6 +1036,8 @@ function groundAt(x, y) {
 }
 
 function wallBlocks(nx, y) {
+  // the helmet gate while it is shut
+  if (GATE.open < 0.85 && nx > GATE.x - 0.55 && nx < GATE.x + 0.55 && y < GATE.baseY + 2.9) return true;
   // sides of platforms too tall to step onto
   for (var i = 0; i < platforms.length; i++) {
     var p = platforms[i];
@@ -580,6 +1053,10 @@ function update(dt) {
 
   var move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   if (move !== 0) P.dir = move;
+  if (HELMET.on && HELMET.mode === 'husks') {
+    for (var hi = 0; hi < HUSKS.length; hi++) huskWalk(HUSKS[hi], move * 3.4 * dt);
+    move = 0;
+  }
 
   // crate pushing: grounded, pressing toward crate, adjacent
   var pushing = false;
@@ -589,7 +1066,9 @@ function update(dt) {
       pushing = true;
     }
   }
+  var wading = inWater(P.x, P.y);
   var speed = pushing ? 1.7 : MOVE;
+  if (wading) speed *= 0.45;
   var target = move * speed;
   var accel = P.grounded ? 40 : 24;
   P.vx += Math.max(-accel * dt, Math.min(accel * dt, target - P.vx));
@@ -614,8 +1093,11 @@ function update(dt) {
   }
   P.x = nx;
 
+  var wasDry = !inWater(P.x, P.y);
   P.vy -= GRAV * dt;
+  if (inWater(P.x, P.y) && P.vy < -2.2) P.vy = -2.2; // water catches the fall
   P.y += P.vy * dt;
+  if (wasDry && inWater(P.x, P.y) && P.vy <= 0) { splash.t = 0; }
   var g = groundAt(P.x, P.y + 0.42);
   if (P.vy <= 0 && P.y <= g) {
     P.y = g; P.vy = 0; P.grounded = true; P.coyote = 0.1;
@@ -626,7 +1108,7 @@ function update(dt) {
 
   P.jumpBuf = Math.max(0, P.jumpBuf - dt);
   if (P.jumpBuf > 0 && (P.grounded || P.coyote > 0)) {
-    P.vy = JUMP_V; P.grounded = false; P.coyote = 0; P.jumpBuf = 0;
+    P.vy = wading ? 4.4 : JUMP_V; P.grounded = false; P.coyote = 0; P.jumpBuf = 0;
   }
   if (!keys.jump && P.vy > 3) P.vy = 3; // variable jump height
 
@@ -636,14 +1118,18 @@ function update(dt) {
   }
 
   // hazards
-  if (P.y < -3.5) die('fall');
+  if (P.y < -3.5 && P.x < 98) die('fall');
   if (P.x > 70 && P.x < 92.5 && beamCatches(P.x)) die('light');
 
   // the dog hunts through the woods
   updateDog(dt);
+  updateHunters(dt);
+  updateHelmetGate(dt);
+  updateWater(dt);
+  updateShe(dt);
 
-  // the door
-  if (P.x > 92.6 && !P.ended) {
+  // the elevator at the end of the flooded hall
+  if (P.x > 123.6 && P.y < -4 && !P.ended) {
     P.ended = true;
     fadeEl.style.opacity = '1';
     setTimeout(function () {
@@ -653,6 +1139,13 @@ function update(dt) {
     }, 900);
   }
 
+  // splash ripple on entry
+  if (splash.t < 0.05) {
+    var br = ripples[0];
+    for (var ri = 0; ri < ripples.length; ri++) if (ripples[ri].t > br.t) br = ripples[ri];
+    br.t = 0; br.mesh.position.set(P.x, WATER.surface + 0.02, 0); br.mesh.scale.setScalar(1.6);
+    splash.t = 9;
+  }
   // crate mesh + door glow
   crateMesh.position.x = CRATE.x;
   doorGlow.material.opacity = 0.25 + 0.18 * Math.sin(performance.now() * 0.002);
@@ -696,7 +1189,7 @@ var camX = 2, camY = 1.4;
 function updateCamera(dt) {
   var lookX = P.x + P.dir * 2.1;
   camX += (lookX - camX) * Math.min(1, dt * 2.4);
-  var ty = 1.5 + Math.max(0, P.y) * 0.55;
+  var ty = 1.5 + (P.y > 0 ? P.y * 0.55 : P.y * 0.8);
   camY += (ty - camY) * Math.min(1, dt * 2.0);
   camera.position.set(camX, camY + 0.9, 9.2);
   camera.lookAt(camX, camY, 0);
@@ -783,8 +1276,20 @@ function thud() {
   o.connect(g); g.connect(master);
   o.start(); o.stop(AC.currentTime + 0.32);
 }
+var rumble = null;
 function updateAudio() {
-  if (!AC || !shimmer || muted) return;
+  if (!AC || muted) { return; }
+  if (!rumble && AC) {
+    try {
+      rumble = AC.createOscillator(); rumble.type = 'square'; rumble.frequency.value = 31;
+      var rg = AC.createGain(); rg.gain.value = 0;
+      var lp2 = AC.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 90;
+      rumble.connect(lp2); lp2.connect(rg); rg.connect(master); rumble.start();
+      rumble._gain = rg;
+    } catch (e) { rumble = null; }
+  }
+  if (rumble) rumble._gain.gain.value = (TRUCK.active && !muted) ? 0.05 : 0;
+  if (!shimmer) return;
   var prox = (P.x > 66 && P.x < 96) ? Math.max(0, 1 - Math.abs(P.x - BEAM.x) / 9) : 0;
   shimmer._gain.gain.value = prox * 0.028;
 }
@@ -795,7 +1300,7 @@ window.__DGsuspect = { beamCone: beamCone, beamGlow: beamGlow, beamSpot: beamSpo
 window.__DG = {
   boot: {
     meshes: scene.children.length, trees: treeCount,
-    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, qa: QA
+    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, qa: QA
   },
   state: function () {
     return {
@@ -804,7 +1309,11 @@ window.__DG = {
       deaths: P.deaths, caught: P.caught, phase: phase, ended: P.ended,
       crateX: +CRATE.x.toFixed(3), beamX: +BEAM.x.toFixed(3),
       dying: P.dying, fps: +fpsValue.toFixed(1),
-      dogX: +DOG.x.toFixed(2), dogActive: DOG.active, dogGivenUp: DOG.givenUp, dogCatches: DOG.catches
+      dogX: +DOG.x.toFixed(2), dogActive: DOG.active, dogGivenUp: DOG.givenUp, dogCatches: DOG.catches,
+      manX: +MAN.x.toFixed(2), manActive: MAN.active, manCatches: MAN.catches, truckX: +TRUCK.x.toFixed(2),
+      wading: inWater(P.x, P.y), sheX: +SHE.x.toFixed(2), sheActive: SHE.active, sheCatches: SHE.catches,
+      helmet: HELMET.on, mode: HELMET.mode, gateOpen: +GATE.open.toFixed(2), plateHeld: GATE.held,
+      husk0: +HUSKS[0].x.toFixed(2), husk1: +HUSKS[1].x.toFixed(2)
     };
   },
   teleport: function (x, y) { P.x = x; P.y = (y === undefined ? (groundAt(x, 50) || 0) : y); P.vx = 0; P.vy = 0; },
@@ -815,6 +1324,7 @@ window.__DG = {
   beamTo: function (x, ms) { BEAM.x = x; BEAM.manualUntil = performance.now() + (ms || 4000); },
   crateTo: function (x) { CRATE.x = x; },
   die: function (cause) { die(cause || 'fall'); },
+  action: function () { handleAction(); },
   step: function (n) { // deterministic sim stepping for QA, independent of render rate
     var now = performance.now();
     for (var i = 0; i < n; i++) { update(STEP); updateBeam(STEP, now + i * STEP * 1000); }
@@ -841,6 +1351,15 @@ function frame() {
   }
   animateBoy(dt, t);
   animateDog(t);
+  for (var hai = 0; hai < HUSKS.length; hai++) {
+    var hk = HUSKS[hai];
+    var driving = HELMET.on && HELMET.mode === 'husks';
+    hk.phase += dt * (driving ? 7 : 1.2);
+    hk.mesh.position.x = hk.x;
+    hk.mesh.rotation.y = hk.dir > 0 ? 0 : Math.PI;
+    hk.mesh.rotation.z = 0.06 + Math.sin(hk.phase) * (driving ? 0.09 : 0.02);
+    hk.mesh.position.y = GATE.baseY + (driving ? Math.abs(Math.cos(hk.phase)) * 0.03 : 0);
+  }
   updateCamera(dt);
   updateMotes(dt);
   updateAudio();
