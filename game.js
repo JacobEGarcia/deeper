@@ -761,7 +761,7 @@ var WATER = { x1: 100, x2: 122, surface: -3.9 };
 var ripples = [], debris = [], cables = [];
 
 // floors: shaft bottom / flooded hall
-addPlatform(100, 126, -5, 3);
+addPlatform(100, 123.2, -5, 3); // hall floor ends at the elevator shaft
 // shaft walls
 (function () {
   var wallM = MAT.wall;
@@ -889,6 +889,172 @@ function updateWater(dt) {
   }
 }
 
+
+
+// ---------------------------------------------------------------- the descent (v8): elevator ride to the deep levels
+var RIDE = { phase: 'none', t: 0, carY: -5, targetY: -45, door: 1, locked: false, flick: 0 };
+var carGroup, carLight, carGlowM, doorsL = [], doorsR = [];
+(function () {
+  carGroup = new THREE.Group();
+  var carM = new THREE.MeshStandardMaterial({ color: 0x232a33, roughness: 0.8, metalness: 0.35 });
+  var carDark = new THREE.MeshStandardMaterial({ color: 0x11161c, roughness: 0.95 });
+  var floor = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 2.8), carM);
+  floor.position.y = -0.11; carGroup.add(floor);
+  var ceil = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.18, 2.8), carDark);
+  ceil.position.y = 3.05; carGroup.add(ceil);
+  var back = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.2, 0.16), carDark);
+  back.position.set(0, 1.5, -1.35); carGroup.add(back);
+  // corner posts
+  [[-1.22, -1.28], [1.22, -1.28], [-1.22, 1.28], [1.22, 1.28]].forEach(function (pz) {
+    var post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 3.2, 0.14), carM);
+    post.position.set(pz[0], 1.5, pz[1]); carGroup.add(post);
+  });
+  // grate bars on the camera side
+  for (var i = 0; i < 7; i++) {
+    var bar = new THREE.Mesh(new THREE.BoxGeometry(0.045, 3.0, 0.045), carM);
+    bar.position.set(-1.05 + i * 0.35, 1.5, 1.32); carGroup.add(bar);
+  }
+  // sliding door panels: left face (top landing) and right face (deep landing)
+  function mkDoor(x) {
+    var arr = [];
+    for (var s2 = -1; s2 <= 1; s2 += 2) {
+      var p = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3.0, 0.72), carM);
+      p.position.set(x, 1.5, s2 * 0.38);
+      p.userData.s = s2;
+      carGroup.add(p); arr.push(p);
+    }
+    return arr;
+  }
+  doorsL = mkDoor(-1.28); doorsR = mkDoor(1.28);
+  // interior glow strip + light
+  carGlowM = new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.75 });
+  var strip = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.07, 0.07), carGlowM);
+  strip.position.set(0, 2.94, 0); carGroup.add(strip);
+  carLight = new THREE.PointLight(0xffd9a0, 4.5, 7, 2);
+  carLight.position.set(0, 2.6, 0.3); carGroup.add(carLight);
+  carGroup.position.set(124.8, -5, -0.2);
+  scene.add(carGroup);
+
+  // the shaft: back wall, side walls below the hall floor, ring beams, pin lights
+  var shaftM = new THREE.MeshStandardMaterial({ color: 0x151a21, roughness: 0.95 });
+  var sb = new THREE.Mesh(new THREE.BoxGeometry(3.6, 52, 0.8), shaftM);
+  sb.position.set(124.8, -20.5, -2.5); scene.add(sb);
+  var sw1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 41.5, 3.2), shaftM);
+  sw1.position.set(123.05, -25.75, -0.9); scene.add(sw1);
+  var sw2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 41.5, 3.2), shaftM);
+  sw2.position.set(126.55, -25.75, -0.9); scene.add(sw2);
+  for (var y = -8; y > -44; y -= 4.5) {
+    var ring = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.26, 3.0), carDark);
+    ring.position.set(124.8, y, -0.9); scene.add(ring);
+  }
+  for (y = -10; y > -44; y -= 8.5) {
+    var pin = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xffb45e, transparent: true, opacity: 0.5 }));
+    pin.position.set(123.6, y, -2.0); scene.add(pin);
+  }
+  // someone standing on a ledge in the shaft, watching the car pass
+  var ledge = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.14, 0.9), shaftM);
+  ledge.position.set(122.8, -21.6, 0.9); scene.add(ledge);
+  var watcher = new THREE.Group();
+  var wm = new THREE.MeshStandardMaterial({ color: 0x0a0d11, roughness: 1 });
+  var wbody = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.85, 4, 8), wm);
+  wbody.position.y = 0.62; watcher.add(wbody);
+  var whead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.9 }));
+  whead.position.y = 1.28; watcher.add(whead);
+  watcher.position.set(122.8, -21.5, 0.9);
+  watcher.rotation.y = 0.7;
+  scene.add(watcher);
+
+  // ---------------- the deep level: corridor at y=-45
+  addPlatform(122.5, 154, -45, 3);
+  var dwall = new THREE.Mesh(new THREE.BoxGeometry(33, 8.5, 1.2), MAT.wall);
+  dwall.position.set(138, -41.6, -3.4); scene.add(dwall);
+  var dceil = new THREE.Mesh(new THREE.BoxGeometry(33, 1.2, 8), MAT.dark);
+  dceil.position.set(138, -37.6, -0.5); scene.add(dceil);
+  // cold strip lights, sparser and colder than the hall above
+  for (var i = 0; i < 3; i++) {
+    var ds = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.07, 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xaac6dd, transparent: true, opacity: 0.7 }));
+    ds.position.set(131 + i * 8, -38.35, -2.75); scene.add(ds);
+    var dl = new THREE.PointLight(0x9fc0d8, 3.4, 13, 2);
+    dl.position.set(131 + i * 8, -39.2, -1.2); scene.add(dl);
+    // visible cone + floor pool so the cold light reads
+    var cone = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 6.2),
+      new THREE.MeshBasicMaterial({ color: 0x9fc0d8, transparent: true, opacity: 0.075, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    cone.position.set(131 + i * 8, -41.6, -2.5); scene.add(cone);
+    var pool = new THREE.Mesh(new THREE.CircleGeometry(1.7, 20),
+      new THREE.MeshBasicMaterial({ color: 0x9fc0d8, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false }));
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(131 + i * 8, -44.95, -0.6); scene.add(pool);
+  }
+  var deepWash = new THREE.PointLight(0x8fa6bd, 3.8, 26, 1.5);
+  deepWash.position.set(138, -40.5, 2.0); scene.add(deepWash);
+  // a faint cold glint on the shaft watcher's ledge
+  var ledgeLight = new THREE.PointLight(0x9fc0d8, 1.4, 3.5, 2);
+  ledgeLight.position.set(122.9, -20.2, 2.0); scene.add(ledgeLight);
+  // pipes along the deep back wall
+  for (i = 0; i < 3; i++) {
+    var dp = new THREE.Mesh(new THREE.CylinderGeometry(0.07 + i * 0.025, 0.07 + i * 0.025, 30, 8), MAT.fence);
+    dp.rotation.z = Math.PI / 2;
+    dp.position.set(138, -39.2 - i * 0.45, -2.85); scene.add(dp);
+  }
+  // still puddles on the deep floor
+  for (i = 0; i < 2; i++) {
+    var pud = new THREE.Mesh(new THREE.PlaneGeometry(2.2 - i * 0.7, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x1a2631, roughness: 0.15, metalness: 0.55, transparent: true, opacity: 0.8 }));
+    pud.rotation.x = -Math.PI / 2;
+    pud.position.set(133 + i * 9, -44.97, 0.3); scene.add(pud);
+  }
+  // the way on: a black doorway with one thin slit of light
+  var dframe = new THREE.Mesh(new THREE.BoxGeometry(2.0, 3.4, 0.5), MAT.wallHi);
+  dframe.position.set(152.6, -43.3, -1.9); scene.add(dframe);
+  var slit = new THREE.Mesh(new THREE.BoxGeometry(0.07, 2.6, 0.08),
+    new THREE.MeshBasicMaterial({ color: 0xdfeaf2, transparent: true, opacity: 0.85 }));
+  slit.position.set(152.6, -43.55, -1.62); scene.add(slit);
+  var dl2 = new THREE.PointLight(0xcfe0ee, 3.5, 8, 2);
+  dl2.position.set(152.4, -43.2, -0.6); scene.add(dl2);
+})();
+
+function updateRide(dt) {
+  RIDE.locked = RIDE.phase !== 'none' && RIDE.phase !== 'done';
+  if (!RIDE.locked) return;
+  RIDE.t += dt;
+  if (RIDE.phase === 'board') {
+    // the boy steps into the car on his own
+    var dx = 124.8 - P.x;
+    P.x += Math.sign(dx) * Math.min(Math.abs(dx), 1.6 * dt);
+    P.dir = 1; P.vx = 0; P.vy = 0; P.grounded = true;
+    RIDE.door = Math.max(0, RIDE.door - dt / 0.7);
+    if (Math.abs(dx) < 0.04 && RIDE.door <= 0) { RIDE.phase = 'shut'; RIDE.t = 0; thud(); }
+  } else if (RIDE.phase === 'shut') {
+    P.vx = 0; P.vy = 0;
+    if (RIDE.t > 0.6) { RIDE.phase = 'down'; RIDE.t = 0; }
+  } else if (RIDE.phase === 'down') {
+    var sp = Math.min(2.6, 0.4 + RIDE.t * 3.2);
+    RIDE.carY = Math.max(RIDE.targetY, RIDE.carY - sp * dt);
+    P.y = RIDE.carY; P.vx = 0; P.vy = 0; P.grounded = true;
+    // sway + flicker
+    carGroup.position.x = 124.8 + Math.sin(RIDE.t * 7.3) * 0.012;
+    RIDE.flick = (Math.sin(RIDE.t * 13.7) > 0.965 || Math.sin(RIDE.t * 5.1 + 2) > 0.985) ? 0.25 : 1;
+    if (RIDE.carY <= RIDE.targetY) { RIDE.phase = 'open'; RIDE.t = 0; thud(); }
+  } else if (RIDE.phase === 'open') {
+    RIDE.door = Math.min(1, RIDE.door + dt / 0.8);
+    P.vx = 0; P.vy = 0;
+    if (RIDE.door >= 1) { RIDE.phase = 'done'; RIDE.locked = false; }
+  }
+  // car follows, doors slide
+  carGroup.position.y = RIDE.carY;
+  if (RIDE.phase === 'down') P.y = RIDE.carY;
+  var lo = (RIDE.phase === 'open' || RIDE.phase === 'done') ? RIDE.door : 0;
+  // left doors: open at top (phase none), closed during ride
+  var lOpen = (RIDE.phase === 'none') ? 1 : 0;
+  doorsL.forEach(function (d) { d.position.z = d.userData.s * (0.38 + lOpen * 0.75); });
+  doorsR.forEach(function (d) { d.position.z = d.userData.s * (0.38 + lo * 0.75); });
+  var fl = RIDE.flick;
+  carLight.intensity = 4.5 * fl;
+  carGlowM.opacity = 0.75 * fl;
+}
 
 // ---------------------------------------------------------------- the thing in the water (v6)
 var SHE = { x: 108, active: false, catches: 0, phase: 0 };
@@ -1035,7 +1201,7 @@ var P = {
   runPhase: 0, coyote: 0, jumpBuf: 0,
   checkpoint: 0, deaths: 0, caught: 0, ended: false, dying: false
 };
-var CHECKPOINTS = [2, 30, 47, 72, 99];
+var CHECKPOINTS = [2, 30, 47, 72, 99, 128];
 var GRAV = 22, MOVE = 4.3, JUMP_V = 8.8;
 
 // ---------------------------------------------------------------- input
@@ -1099,7 +1265,7 @@ function die(cause) {
   thud();
   setTimeout(function () {
     P.x = CHECKPOINTS[P.checkpoint];
-    P.y = P.checkpoint === 2 ? 2.3 : 0;
+    P.y = P.checkpoint === 2 ? 2.3 : (P.checkpoint === 5 ? -45 : 0);
     P.vx = 0; P.vy = 0; P.dying = false;
     if (DOG.active) { DOG.x = P.x - 14; DOG.y = 0; DOG.vy = 0; }
     if (MAN.active) { MAN.x = P.x - 15; MAN.y = 0; MAN.vy = 0; }
@@ -1137,6 +1303,8 @@ function wallBlocks(nx, y) {
 function update(dt) {
   if (phase !== 'play' || P.ended || P.dying) return;
 
+  updateRide(dt);
+  if (!RIDE.locked) {
   var move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   if (move !== 0) P.dir = move;
   if (HELMET.on && HELMET.mode === 'husks') {
@@ -1197,6 +1365,7 @@ function update(dt) {
     P.vy = wading ? 4.4 : JUMP_V; P.grounded = false; P.coyote = 0; P.jumpBuf = 0;
   }
   if (!keys.jump && P.vy > 3) P.vy = 3; // variable jump height
+  } // end !RIDE.locked
 
   // checkpoints
   for (var i = P.checkpoint + 1; i < CHECKPOINTS.length; i++) {
@@ -1215,8 +1384,12 @@ function update(dt) {
   updateShe(dt);
   updateWatchers(dt);
 
-  // the elevator at the end of the flooded hall
-  if (P.x > 123.6 && P.y < -4 && !P.ended) {
+  // board the elevator at the end of the flooded hall
+  if (P.x > 122.9 && P.y < -4 && P.y > -6 && RIDE.phase === 'none' && !P.ended) {
+    RIDE.phase = 'board'; RIDE.t = 0;
+  }
+  // the way on, at the bottom of the shaft
+  if (P.x > 151.5 && P.y < -40 && !P.ended) {
     P.ended = true;
     fadeEl.style.opacity = '1';
     setTimeout(function () {
@@ -1274,9 +1447,10 @@ function animateBoy(dt, now) {
 // ---------------------------------------------------------------- camera
 var camX = 2, camY = 1.4;
 function updateCamera(dt) {
-  var lookX = P.x + P.dir * 2.1;
+  var lookX = (RIDE.locked || RIDE.phase === 'done' && P.x < 126) ? 124.8 : P.x + P.dir * 2.1; // center the car during the descent
   camX += (lookX - camX) * Math.min(1, dt * 2.4);
   var ty = 1.5 + (P.y > 0 ? P.y * 0.55 : P.y * 0.8);
+  if (P.y < -6) ty = P.y + 2.3; // deep sections: keep the boy framed
   camY += (ty - camY) * Math.min(1, dt * 2.0);
   camera.position.set(camX, camY + 0.9, 9.2);
   camera.lookAt(camX, camY, 0);
@@ -1375,7 +1549,7 @@ function updateAudio() {
       rumble._gain = rg;
     } catch (e) { rumble = null; }
   }
-  if (rumble) rumble._gain.gain.value = (TRUCK.active && !muted) ? 0.05 : 0;
+  if (rumble) rumble._gain.gain.value = ((TRUCK.active || RIDE.phase === 'down') && !muted) ? 0.05 : 0;
   if (!shimmer) return;
   var prox = (P.x > 66 && P.x < 96) ? Math.max(0, 1 - Math.abs(P.x - BEAM.x) / 9) : 0;
   shimmer._gain.gain.value = prox * 0.028;
@@ -1387,7 +1561,7 @@ window.__DGsuspect = { beamCone: beamCone, beamGlow: beamGlow, beamSpot: beamSpo
 window.__DG = {
   boot: {
     meshes: scene.children.length, trees: treeCount,
-    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, qa: QA
+    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, car: 1, qa: QA
   },
   state: function () {
     return {
@@ -1400,6 +1574,7 @@ window.__DG = {
       manX: +MAN.x.toFixed(2), manActive: MAN.active, manCatches: MAN.catches, truckX: +TRUCK.x.toFixed(2),
       wading: inWater(P.x, P.y), sheX: +SHE.x.toFixed(2), sheActive: SHE.active, sheCatches: SHE.catches,
       hairOut: hairTip.visible, gantry0: +gantryHusks[0].mesh.position.x.toFixed(2), sciYaw0: +scientists[0].head.rotation.y.toFixed(3),
+      ridePhase: RIDE.phase, carY: +RIDE.carY.toFixed(2), rideLocked: RIDE.locked,
       helmet: HELMET.on, mode: HELMET.mode, gateOpen: +GATE.open.toFixed(2), plateHeld: GATE.held,
       husk0: +HUSKS[0].x.toFixed(2), husk1: +HUSKS[1].x.toFixed(2)
     };
