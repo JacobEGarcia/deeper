@@ -966,8 +966,8 @@ var carGroup, carLight, carGlowM, doorsL = [], doorsR = [];
   watcher.rotation.y = 0.7;
   scene.add(watcher);
 
-  // ---------------- the deep level: corridor at y=-45
-  addPlatform(122.5, 154, -45, 3);
+  // ---------------- the deep level: corridor at y=-45, extended in v9 to the tank drop
+  addPlatform(122.5, 157.5, -45, 3);
   var dwall = new THREE.Mesh(new THREE.BoxGeometry(33, 8.5, 1.2), MAT.wall);
   dwall.position.set(138, -41.6, -3.4); scene.add(dwall);
   var dceil = new THREE.Mesh(new THREE.BoxGeometry(33, 1.2, 8), MAT.dark);
@@ -1056,6 +1056,259 @@ function updateRide(dt) {
   carGlowM.opacity = 0.75 * fl;
 }
 
+
+// ---------------------------------------------------------------- the tank (v9): open water, she hunts
+var TANK = { x1: 154, x2: 200, surface: -40, floor: -58 };
+function inTank(x, y) { return x > TANK.x1 && x < TANK.x2 && y < TANK.surface; }
+var tankRipples = [], bubbles = [];
+var G2 = { x: 190, open: 0, crank: 0 };
+var HER = { x: 170, y: -52, active: false, catches: 0, lunge: 0, cd: 0, lvx: 0, lvy: 0, orbA: 0 };
+var herMesh, herFace, herHair = [];
+var PYLONS = [166, 184];
+(function () {
+  // entry ledge continues past the doorway, then open water
+  // the chamber: vast back wall, sunken structures, the tank floor
+  var twall = new THREE.Mesh(new THREE.BoxGeometry(50, 27, 1.2), MAT.wall);
+  twall.position.set(177, -45.5, -3.6); scene.add(twall);
+  addPlatform(154, 200, -58, 2);
+  // wall below the entry ledge
+  var uw1 = new THREE.Mesh(new THREE.BoxGeometry(4.2, 13.5, 3.2), MAT.wall);
+  uw1.position.set(155.4, -51.7, -0.9); scene.add(uw1);
+  // two great dark windows, faint green glow behind the glass
+  for (var wi = 0; wi < 2; wi++) {
+    var wf = new THREE.Mesh(new THREE.BoxGeometry(6.5, 9, 0.7), MAT.wallHi);
+    wf.position.set(168 + wi * 16, -48, -3.0); scene.add(wf);
+    var wg = new THREE.Mesh(new THREE.BoxGeometry(5.6, 8.1, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0x46686e, transparent: true, opacity: 0.45 }));
+    wg.position.set(168 + wi * 16, -48, -2.6); scene.add(wg);
+    var wl2 = new THREE.PointLight(0x51767c, 1.8, 15, 2);
+    wl2.position.set(168 + wi * 16, -48, -1.2); scene.add(wl2);
+  }
+  // sunken catwalk wreck on the floor
+  var wreck = new THREE.Mesh(new THREE.BoxGeometry(9, 0.3, 1.6), MAT.dark);
+  wreck.position.set(172, -57.2, -0.5); wreck.rotation.z = 0.09; scene.add(wreck);
+  var wreck2 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.4, 0.25), MAT.dark);
+  wreck2.position.set(169, -55.6, -0.5); wreck2.rotation.z = 0.22; scene.add(wreck2);
+  // light pylons she will not cross: warm columns from the dark above into the water
+  for (var pi = 0; pi < PYLONS.length; pi++) {
+    var px = PYLONS[pi];
+    var rod = new THREE.Mesh(new THREE.BoxGeometry(0.14, 10.5, 0.14), MAT.fence);
+    rod.position.set(px, -39.7, -0.6); scene.add(rod);
+    var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffcf8e }));
+    lamp.position.set(px, -44.9, -0.6); scene.add(lamp);
+    var pl = new THREE.PointLight(0xffb45e, 3.0, 11, 2);
+    pl.position.set(px, -45.5, -0.2); scene.add(pl);
+    var pcone = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 13.5),
+      new THREE.MeshBasicMaterial({ color: 0xffb45e, transparent: true, opacity: 0.085, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    pcone.position.set(px, -46.7, -0.9); scene.add(pcone);
+    var ppool = new THREE.Mesh(new THREE.CircleGeometry(1.8, 20),
+      new THREE.MeshBasicMaterial({ color: 0xffb45e, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ppool.rotation.x = -Math.PI / 2;
+    ppool.position.set(px, -57.9, -0.6); scene.add(ppool);
+  }
+  // the mid platform: concrete block to climb out and breathe
+  addPlatform(172, 176, -39.1, 3);
+  var mp = new THREE.Mesh(new THREE.BoxGeometry(4, 19.5, 3.4), MAT.wall);
+  mp.position.set(174, -48.85, -0.9); scene.add(mp);
+  // the crank gate: barred door, floor to above the surface, rises as you crank
+  var gm = new THREE.MeshStandardMaterial({ color: 0x2b333e, roughness: 0.8, metalness: 0.45 });
+  var gate = new THREE.Group();
+  for (var gi = 0; gi < 6; gi++) {
+    var gb = new THREE.Mesh(new THREE.BoxGeometry(0.09, 18.5, 0.09), gm);
+    gb.position.set(0, 0, -0.75 + gi * 0.3); gate.add(gb);
+  }
+  var gt = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 1.8), gm);
+  gt.position.set(0, 9.1, 0); gate.add(gt);
+  var gb2 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 1.8), gm);
+  gb2.position.set(0, -9.1, 0); gate.add(gb2);
+  gate.position.set(G2.x, -48.75, -0.4);
+  scene.add(gate);
+  G2.mesh = gate;
+  // gate frame + the wheel
+  var gf = new THREE.Mesh(new THREE.BoxGeometry(0.5, 19.5, 0.4), MAT.wallHi);
+  gf.position.set(G2.x, -48.6, -1.35); scene.add(gf);
+  var wheel = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 20),
+    new THREE.MeshStandardMaterial({ color: 0x4a5260, roughness: 0.5, metalness: 0.7 }));
+  wheel.position.set(189.2, -52, 0.35); scene.add(wheel);
+  G2.wheel = wheel;
+  // the far rim: climb out, walk to the black stair down
+  addPlatform(197.5, 200, -39.1, 3);
+  var rim = new THREE.Mesh(new THREE.BoxGeometry(2.6, 19.5, 3.4), MAT.wall);
+  rim.position.set(198.7, -48.85, -0.9); scene.add(rim);
+  var stairDark = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.6, 0.3), MAT.dark);
+  stairDark.position.set(199.4, -37.8, -1.2); scene.add(stairDark);
+
+  // tank water surface
+  var tw = new THREE.Mesh(
+    new THREE.PlaneGeometry(TANK.x2 - TANK.x1, 4.0, 40, 1),
+    new THREE.MeshStandardMaterial({ color: 0x1c2a36, roughness: 0.15, metalness: 0.6, transparent: true, opacity: 0.82 })
+  );
+  tw.rotation.x = -Math.PI / 2;
+  tw.position.set((TANK.x1 + TANK.x2) / 2, TANK.surface, 0);
+  scene.add(tw);
+  TANK.mesh = tw;
+  for (var ri = 0; ri < 6; ri++) {
+    var rr = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.22, 20),
+      new THREE.MeshBasicMaterial({ color: 0x9fb6cc, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    rr.rotation.x = -Math.PI / 2;
+    rr.position.y = TANK.surface + 0.02;
+    scene.add(rr);
+    tankRipples.push({ mesh: rr, t: 99 });
+  }
+  // bubbles
+  for (var bi = 0; bi < 10; bi++) {
+    var bb = new THREE.Mesh(new THREE.CircleGeometry(0.045, 8),
+      new THREE.MeshBasicMaterial({ color: 0xbfd4e4, transparent: true, opacity: 0, depthWrite: false }));
+    scene.add(bb);
+    bubbles.push({ mesh: bb, t: 99, x: 0, y: 0 });
+  }
+
+  // her, in open water: full body, pale face, trailing hair
+  herMesh = new THREE.Group();
+  var hbM = new THREE.MeshStandardMaterial({ color: 0x070a0d, roughness: 1 });
+  var hb = new THREE.Mesh(new THREE.CapsuleGeometry(0.20, 1.3, 6, 10), hbM);
+  hb.rotation.z = Math.PI / 2;
+  herMesh.add(hb);
+  herFace = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0xc7cfd6, roughness: 0.6, transparent: true, opacity: 0 }));
+  herFace.position.set(0.75, 0.08, 0); herMesh.add(herFace);
+  for (var hi = 0; hi < 3; hi++) {
+    var hh = new THREE.Mesh(new THREE.PlaneGeometry(1.1 - hi * 0.2, 0.16),
+      new THREE.MeshBasicMaterial({ color: 0x8a97a3, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    hh.position.set(-0.85 - hi * 0.15, 0.10 + hi * 0.07, 0);
+    herMesh.add(hh);
+    herHair.push(hh);
+  }
+  var herRim = new THREE.PointLight(0x9fb6cc, 0.9, 4.5, 2);
+  herRim.position.set(0, 0.5, 0.8); herMesh.add(herRim);
+  herMesh.position.set(HER.x, HER.y, -0.4);
+  scene.add(herMesh);
+})();
+
+var tankRippleTimer = 0, wasInTank = false, bubTimer = 0;
+function boyInPylonLight() {
+  if (P.y > TANK.surface + 0.05) return false;
+  for (var i = 0; i < PYLONS.length; i++) if (Math.abs(P.x - PYLONS[i]) < 1.7) return PYLONS[i];
+  return false;
+}
+function updateHer(dt) {
+  var inT = inTank(P.x, P.y) && P.y < TANK.surface + 0.05;
+  if (!HER.active) {
+    herMesh.visible = inT || HER.catches > 0;
+    if (inT && !P.ended && P.x > 156.5) { HER.active = true; HER.cd = Math.max(HER.cd, 1.0); }
+    else return;
+  }
+  if (P.ended) { HER.active = false; }
+  var dx = P.x - HER.x, dy = (P.y + 0.2) - HER.y;
+  var d = Math.sqrt(dx * dx + dy * dy);
+  if (HER.lunge > 0) {
+    if (boyInPylonLight() !== false) { HER.lunge = 0; HER.cd = 1.4; }
+    else {
+      HER.lunge -= dt;
+      HER.x += HER.lvx * dt; HER.y += HER.lvy * dt;
+    }
+  } else {
+    HER.cd -= dt;
+    var lit = boyInPylonLight();
+    if (!inT) {
+      // he climbed out: she sinks and drifts beneath him
+      var ty2 = TANK.floor + 2.5;
+      HER.x += Math.sign(P.x - HER.x) * Math.min(Math.abs(P.x - HER.x), 1.2 * dt);
+      HER.y += Math.sign(ty2 - HER.y) * Math.min(Math.abs(ty2 - HER.y), 1.2 * dt);
+    } else if (lit !== false) {
+      // held at the edge of the light: she keeps a 2.7-wide berth, tracking his depth
+      var oy3 = Math.max(TANK.floor + 1, Math.min(TANK.surface - 0.8, P.y));
+      var side = (HER.x - lit) === 0 ? 1 : Math.sign(HER.x - lit);
+      var tx3 = lit + side * 2.7;
+      HER.x += Math.sign(tx3 - HER.x) * Math.min(Math.abs(tx3 - HER.x), 1.9 * dt);
+      HER.y += Math.sign(oy3 - HER.y) * Math.min(Math.abs(oy3 - HER.y), 1.4 * dt);
+    } else if (d < 6 && HER.cd <= 0) {
+      HER.lunge = 0.9; HER.cd = 2.6;
+      HER.lvx = dx / d * 4.3; HER.lvy = dy / d * 4.3;
+    } else if (d > 0.01) {
+      HER.x += dx / d * 1.75 * dt; HER.y += dy / d * 1.75 * dt;
+    }
+  }
+  HER.x = Math.max(155.5, Math.min(199, HER.x));
+  HER.y = Math.max(TANK.floor + 0.8, Math.min(TANK.surface - 0.15, HER.y));
+  // the catch
+  if (inT && d < 0.7 && !P.dying && boyInPylonLight() === false) {
+    HER.catches++;
+    die('she');
+    HER.x = 170; HER.y = TANK.floor + 6; HER.active = false; HER.lunge = 0; HER.cd = 1.5;
+  }
+  // presentation
+  var moving = HER.lunge > 0 || true;
+  var ang = Math.atan2(HER.lunge > 0 ? HER.lvy : dy, HER.lunge > 0 ? HER.lvx : dx);
+  herMesh.rotation.z = ang;
+  herMesh.position.set(HER.x, HER.y, -0.4);
+  var faceOp = Math.max(0, Math.min(0.95, 1 - d / 12));
+  herFace.material.opacity = faceOp;
+  for (var hi = 0; hi < herHair.length; hi++) {
+    herHair[hi].material.opacity = faceOp * 0.8;
+    herHair[hi].rotation.z = Math.sin(performance.now() * 0.003 + hi * 1.4) * 0.18;
+  }
+  herMesh.visible = HER.active || d < 14;
+}
+
+function updateTank(dt) {
+  // surface undulation
+  var pos = TANK.mesh.geometry.attributes.position;
+  var now = performance.now() * 0.001;
+  for (var i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(now * 1.2 + pos.getX(i) * 0.9) * 0.04);
+  pos.needsUpdate = true;
+  for (i = 0; i < tankRipples.length; i++) {
+    var r = tankRipples[i];
+    r.t += dt;
+    if (r.t < 1.2) { var u = r.t / 1.2; r.mesh.scale.setScalar(1 + u * 3.4); r.mesh.material.opacity = 0.4 * (1 - u); }
+    else r.mesh.material.opacity = 0;
+  }
+  for (i = 0; i < bubbles.length; i++) {
+    var b = bubbles[i];
+    b.t += dt;
+    if (b.t < 1.6) {
+      b.y += 1.3 * dt;
+      b.mesh.position.set(b.x + Math.sin(now * 5 + i) * 0.05, b.y, 0.3);
+      b.mesh.material.opacity = 0.5 * (1 - b.t / 1.6);
+    } else b.mesh.material.opacity = 0;
+  }
+  var inT = inTank(P.x, P.y);
+  // entry splash
+  if (inT && !wasInTank) {
+    var br = tankRipples[0];
+    for (i = 0; i < tankRipples.length; i++) if (tankRipples[i].t > br.t) br = tankRipples[i];
+    br.t = 0; br.mesh.position.set(P.x, TANK.surface + 0.02, 0); br.mesh.scale.setScalar(1.7);
+  }
+  wasInTank = inT;
+  // surface ripples while swimming at the top
+  if (inT && P.y > TANK.surface - 0.7 && Math.abs(P.vx) > 0.3) {
+    tankRippleTimer -= dt;
+    if (tankRippleTimer <= 0) {
+      tankRippleTimer = 0.36;
+      var sr = tankRipples[0];
+      for (i = 0; i < tankRipples.length; i++) if (tankRipples[i].t > sr.t) sr = tankRipples[i];
+      sr.t = 0; sr.mesh.position.set(P.x, TANK.surface + 0.02, 0); sr.mesh.scale.setScalar(1);
+    }
+  }
+  // bubbles while submerged and moving
+  if (inT && P.y < TANK.surface - 0.6 && (Math.abs(P.vx) > 0.4 || Math.abs(P.vy) > 0.4)) {
+    bubTimer -= dt;
+    if (bubTimer <= 0) {
+      bubTimer = 0.22;
+      var bb2 = bubbles[0];
+      for (i = 0; i < bubbles.length; i++) if (bubbles[i].t > bb2.t) bb2 = bubbles[i];
+      bb2.t = 0; bb2.x = P.x - P.dir * 0.15; bb2.y = P.y + 0.55;
+    }
+  }
+  // the crank wheel
+  if (!P.ended && G2.open < 1 && keys.action && Math.abs(P.x - 189.2) < 1.0 && Math.abs(P.y - -52) < 1.3) {
+    G2.crank += dt;
+    G2.open = Math.min(1, G2.crank / 2.5);
+  }
+  G2.mesh.position.y = -48.75 + G2.open * 18;
+  G2.wheel.rotation.z += (keys.action && Math.abs(P.x - 189.2) < 1.0 && G2.open < 1 ? dt * 3 : 0);
+}
 // ---------------------------------------------------------------- the thing in the water (v6)
 var SHE = { x: 108, active: false, catches: 0, phase: 0 };
 var sheMesh, sheFace;
@@ -1083,6 +1336,7 @@ var sheMesh, sheFace;
 })();
 
 function updateShe(dt) {
+  if (P.x > 124) { SHE.active = false; sheMesh.visible = false; return; }
   var boyIn = inWater(P.x, P.y);
   if (!SHE.active && boyIn && P.x > WATER.x1 + 1 && phase === 'play' && !P.ended) {
     SHE.active = true;
@@ -1201,7 +1455,8 @@ var P = {
   runPhase: 0, coyote: 0, jumpBuf: 0,
   checkpoint: 0, deaths: 0, caught: 0, ended: false, dying: false
 };
-var CHECKPOINTS = [2, 30, 47, 72, 99, 128];
+var CHECKPOINTS = [2, 30, 47, 72, 99, 128, 156, 174];
+var CHECKPOINT_Y = { 2: 2.3, 5: -45, 6: -45, 7: -39.1 };
 var GRAV = 22, MOVE = 4.3, JUMP_V = 8.8;
 
 // ---------------------------------------------------------------- input
@@ -1219,7 +1474,7 @@ var fadeEl = document.getElementById('fade');
 window.addEventListener('keydown', function (e) {
   if (phase === 'title') { startGame(); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
-  if (e.code === 'KeyE') { handleAction(); return; }
+  if (e.code === 'KeyE') { keys.action = true; handleAction(); return; }
   if (e.code === 'KeyR' && P.ended) { restart(); return; }
   var k = keymap[e.code];
   if (k) {
@@ -1229,6 +1484,7 @@ window.addEventListener('keydown', function (e) {
   }
 });
 window.addEventListener('keyup', function (e) {
+  if (e.code === 'KeyE') { keys.action = false; return; }
   var k = keymap[e.code];
   if (k) keys[k] = false;
 });
@@ -1265,10 +1521,11 @@ function die(cause) {
   thud();
   setTimeout(function () {
     P.x = CHECKPOINTS[P.checkpoint];
-    P.y = P.checkpoint === 2 ? 2.3 : (P.checkpoint === 5 ? -45 : 0);
+    P.y = CHECKPOINT_Y[P.checkpoint] !== undefined ? CHECKPOINT_Y[P.checkpoint] : 0;
     P.vx = 0; P.vy = 0; P.dying = false;
     if (DOG.active) { DOG.x = P.x - 14; DOG.y = 0; DOG.vy = 0; }
     if (MAN.active) { MAN.x = P.x - 15; MAN.y = 0; MAN.vy = 0; }
+    if (HER.active) { HER.x = 170; HER.y = TANK.floor + 6; HER.active = false; HER.lunge = 0; HER.cd = 1.5; }
     fadeEl.style.opacity = '0';
   }, 460);
 }
@@ -1287,7 +1544,20 @@ function groundAt(x, y) {
   return best;
 }
 
+function tryMantle(nx, move) {
+  for (var mi = 0; mi < platforms.length; mi++) {
+    var mpf = platforms[mi];
+    var rise = mpf.top - P.y;
+    if (rise > 0 && rise < 1.9 && nx > mpf.x1 - 0.4 && nx < mpf.x2 + 0.4 &&
+        Math.sign(move) === Math.sign((mpf.x1 + mpf.x2) / 2 - P.x)) {
+      P.y = mpf.top; P.x = nx; P.vy = 0; P.grounded = true; return true;
+    }
+  }
+  return false;
+}
 function wallBlocks(nx, y) {
+  // the tank gate until it is cranked up
+  if (G2.open < 0.95 && nx > G2.x - 0.35 && nx < G2.x + 0.35 && y < -58 + G2.open * 18 + 1.3) return true;
   // the helmet gate while it is shut
   if (GATE.open < 0.85 && nx > GATE.x - 0.55 && nx < GATE.x + 0.55 && y < GATE.baseY + 2.9) return true;
   // sides of platforms too tall to step onto
@@ -1320,7 +1590,23 @@ function update(dt) {
       pushing = true;
     }
   }
-  var wading = inWater(P.x, P.y);
+  var wading = inWater(P.x, P.y) || (inTank(P.x, P.y) && P.y >= TANK.surface - 0.7);
+  var swimming = inTank(P.x, P.y) && P.y < TANK.surface - 0.35;
+  if (swimming) {
+    var swimSpd = 2.2;
+    P.vx += Math.max(-14 * dt, Math.min(14 * dt, move * swimSpd - P.vx));
+    var vtarget = keys.jump ? 1.9 : -0.55;
+    P.vy += Math.max(-10 * dt, Math.min(10 * dt, vtarget - P.vy));
+    if (move !== 0) P.dir = move;
+    var snx = P.x + P.vx * dt;
+    if (wallBlocks(snx, P.y) && !tryMantle(snx, move)) { snx = P.x; P.vx = 0; }
+    P.x = snx;
+    P.y += P.vy * dt;
+    if (P.y > TANK.surface - 0.35) { P.y = TANK.surface - 0.35; P.vy = 0; }
+    var tf2 = groundAt(P.x, P.y + 0.42);
+    if (tf2 > -Infinity && P.y < tf2) { P.y = tf2; P.vy = 0; }
+    P.grounded = false; P.coyote = 0; P.jumpBuf = 0;
+  } else {
   var speed = pushing ? 1.7 : MOVE;
   if (wading) speed *= 0.45;
   var target = move * speed;
@@ -1336,7 +1622,7 @@ function update(dt) {
     } else {
       nx = P.x; P.vx = 0;
     }
-  } else if (wallBlocks(nx, P.y)) {
+  } else if (wallBlocks(nx, P.y) && !tryMantle(nx, move)) {
     nx = P.x; P.vx = 0;
   }
   // crate blocks walking through it (unless standing on it)
@@ -1365,6 +1651,7 @@ function update(dt) {
     P.vy = wading ? 4.4 : JUMP_V; P.grounded = false; P.coyote = 0; P.jumpBuf = 0;
   }
   if (!keys.jump && P.vy > 3) P.vy = 3; // variable jump height
+  } // end walk/wade branch
   } // end !RIDE.locked
 
   // checkpoints
@@ -1383,13 +1670,15 @@ function update(dt) {
   updateWater(dt);
   updateShe(dt);
   updateWatchers(dt);
+  updateTank(dt);
+  updateHer(dt);
 
   // board the elevator at the end of the flooded hall
   if (P.x > 122.9 && P.y < -4 && P.y > -6 && RIDE.phase === 'none' && !P.ended) {
     RIDE.phase = 'board'; RIDE.t = 0;
   }
-  // the way on, at the bottom of the shaft
-  if (P.x > 151.5 && P.y < -40 && !P.ended) {
+  // the way on, past the tank: the black stair at the far rim
+  if (P.x > 199.0 && P.y > -39.5 && !P.ended) {
     P.ended = true;
     fadeEl.style.opacity = '1';
     setTimeout(function () {
@@ -1552,7 +1841,8 @@ function updateAudio() {
   if (rumble) rumble._gain.gain.value = ((TRUCK.active || RIDE.phase === 'down') && !muted) ? 0.05 : 0;
   if (!shimmer) return;
   var prox = (P.x > 66 && P.x < 96) ? Math.max(0, 1 - Math.abs(P.x - BEAM.x) / 9) : 0;
-  shimmer._gain.gain.value = prox * 0.028;
+  var herProx = HER.active ? Math.max(0, 1 - Math.abs(P.x - HER.x) / 8) : 0;
+  shimmer._gain.gain.value = Math.max(prox * 0.028, herProx * 0.05);
 }
 
 // ---------------------------------------------------------------- debug / QA hooks
@@ -1561,7 +1851,7 @@ window.__DGsuspect = { beamCone: beamCone, beamGlow: beamGlow, beamSpot: beamSpo
 window.__DG = {
   boot: {
     meshes: scene.children.length, trees: treeCount,
-    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, car: 1, qa: QA
+    platforms: platforms.length, checkpoints: CHECKPOINTS.length, dogs: 1, men: 1, trucks: 1, husks: HUSKS.length, cables: cables.length, her: 1, watchers: scientists.length, gantry: gantryHusks.length, car: 1, tankHer: 1, pylons: PYLONS.length, qa: QA
   },
   state: function () {
     return {
@@ -1575,6 +1865,9 @@ window.__DG = {
       wading: inWater(P.x, P.y), sheX: +SHE.x.toFixed(2), sheActive: SHE.active, sheCatches: SHE.catches,
       hairOut: hairTip.visible, gantry0: +gantryHusks[0].mesh.position.x.toFixed(2), sciYaw0: +scientists[0].head.rotation.y.toFixed(3),
       ridePhase: RIDE.phase, carY: +RIDE.carY.toFixed(2), rideLocked: RIDE.locked,
+      swimming: inTank(P.x, P.y) && P.y < TANK.surface - 0.35,
+      herX: +HER.x.toFixed(2), herY: +HER.y.toFixed(2), herActive: HER.active, herCatches: HER.catches,
+      gate2: +G2.open.toFixed(2), crank: +G2.crank.toFixed(2), inLight: boyInPylonLight() !== false,
       helmet: HELMET.on, mode: HELMET.mode, gateOpen: +GATE.open.toFixed(2), plateHeld: GATE.held,
       husk0: +HUSKS[0].x.toFixed(2), husk1: +HUSKS[1].x.toFixed(2)
     };
